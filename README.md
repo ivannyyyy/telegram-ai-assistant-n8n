@@ -1,5 +1,9 @@
 # Human-in-the-Loop Telegram AI Assistant
 
+<p align="center">
+  <img src="https://raw.githubusercontent.com/ivannyyyy/ivannyyyy/main/assets/telegram-ai-assistant-pixel.png" width="100%" alt="Telegram AI Assistant — stateful dialogue, memory and human escalation architecture" />
+</p>
+
 A stateful AI assistant built with n8n for task-driven Telegram conversations.
 
 The administrator defines a task, assistant role, target person, communication rules, working hours, goals and task-level knowledge in Airtable. The system can initiate a Telegram conversation, continue it with persistent context, pause delivery outside the allowed time window, ask an administrator for missing information, resume the dialogue after the knowledge base is updated, and produce operational summaries of the conversation.

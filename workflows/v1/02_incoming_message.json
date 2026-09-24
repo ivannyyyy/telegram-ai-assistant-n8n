@@ -1,0 +1,2743 @@
+{
+  "name": "AI Assistant — Incoming Message v1",
+  "nodes": [
+    {
+      "parameters": {
+        "events": [
+          "updateNewMessage"
+        ],
+        "options": {}
+      },
+      "type": "@telepilotco/n8n-nodes-telepilot.telePilotTrigger",
+      "typeVersion": 1,
+      "position": [
+        -320,
+        0
+      ],
+      "id": "b91f64fe-2ba6-4952-bfb7-6ee80a2095aa",
+      "name": "TelePilot Trigger"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "1a4e8203-8e93-4a71-8f24-78d63330e62e",
+              "leftValue": "={{ !!$json.airtable_id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        288,
+        0
+      ],
+      "id": "189664c7-e996-41bd-a0b7-4bed787cad63",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Напиши ответ на последнее сообщение: {{ $json.user_message_text }}",
+        "options": {
+          "systemMessage": "=Ты — {{\n  $('Search task').isExecuted\n    ? $('Search task').first().json['assistant_ info']\n    : $('Search task1').first().json['assistant_ info']\n}}.\n\nТы ведёшь переписку с пользователем в Telegram от имени реального помощника.\n\nТВОЯ РОЛЬ\n\n{{\n  $('Search task').isExecuted\n    ? $('Search task').first().json.assistant_role\n    : $('Search task1').first().json.assistant_role\n}}\n\nСОБЕСЕДНИК\n\nИмя: {{\n  $('Search assistant').isExecuted\n    ? $('Search assistant').first().json.person_name\n    : $('Search assistant1').first().json.person_name\n}}\n\nРоль собеседника: {{\n  $('Search task').isExecuted\n    ? $('Search task').first().json.person_role\n    : $('Search task1').first().json.person_role\n}}\n\nЦЕЛЬ ДИАЛОГА\n\n{{\n  $('Search task').isExecuted\n    ? $('Search task').first().json.goal\n    : $('Search task1').first().json.goal\n}}\n\nДОСТУПНАЯ ИНФОРМАЦИЯ\n\n{{\n  $('Search task').isExecuted\n    ? $('Search task').first().json.Information_base\n    : $('Search task1').first().json.Information_base\n}}\n\nПРАВИЛА ОБЩЕНИЯ\n\n{{\n  $('Search task').isExecuted\n    ? $('Search task').first().json.rules\n    : $('Search task1').first().json.rules\n}}\n\n{{ $('Search task').item.json.promt_incoming_message }}"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3,
+      "position": [
+        2704,
+        48
+      ],
+      "id": "b90f7d45-4337-47c2-99ca-92eddcdee14e",
+      "name": "Continue Dialog",
+      "retryOnFail": true,
+      "maxTries": 5
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-5.1",
+          "mode": "list",
+          "cachedResultName": "gpt-5.1"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        2688,
+        272
+      ],
+      "id": "d1db711b-7f83-49e5-bd1d-3afa0e64238f",
+      "name": "OpenAI Chat Model"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "base": {
+          "__rl": true,
+          "value": "YOUR_AIRTABLE_BASE_ID",
+          "mode": "id",
+          "cachedResultName": "AI Assistant Admin"
+        },
+        "table": {
+          "__rl": true,
+          "value": "YOUR_ASSISTANT_TABLE_ID",
+          "mode": "id",
+          "cachedResultName": "ai_assistant"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "id": "={{ $json.airtable_id }}",
+            "Status": "Done",
+            "final_result": "={{ $('Code in JavaScript2').item.json.result }}"
+          },
+          "matchingColumns": [
+            "id"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": false
+            },
+            {
+              "id": "Name_task",
+              "displayName": "Name_task",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Status",
+              "displayName": "Status",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "options",
+              "options": [
+                {
+                  "name": "new",
+                  "value": "new"
+                },
+                {
+                  "name": "In progress",
+                  "value": "In progress"
+                },
+                {
+                  "name": "Done",
+                  "value": "Done"
+                }
+              ],
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "telegram_username",
+              "displayName": "telegram_username",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "person_name",
+              "displayName": "person_name",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "person_role",
+              "displayName": "person_role",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "assistant_role",
+              "displayName": "assistant_role",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "goal",
+              "displayName": "goal",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "communication_rules",
+              "displayName": "communication_rules",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "required_result",
+              "displayName": "required_result",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "final_result",
+              "displayName": "final_result",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "created_at",
+              "displayName": "created_at",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "dateTime",
+              "readOnly": false,
+              "removed": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        5392,
+        448
+      ],
+      "id": "cb5b6ce0-e22c-44b1-9f51-6ce385aa35cb",
+      "name": "Update record"
+    },
+    {
+      "parameters": {
+        "chatId": "YOUR_TELEGRAM_ADMIN_CHAT_ID",
+        "text": "=Задача №{{ $json.fields.task_number }} завершена  \nЗадача: {{ $json.fields.Name_task }}\nИтог: {{ $json.fields.final_result }}",
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "HTML"
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        5696,
+        448
+      ],
+      "id": "a5e7b768-8134-4dda-b235-98fd39087182",
+      "name": "Send a text message"
+    },
+    {
+      "parameters": {
+        "resource": "file",
+        "file_id": "={{\n  (() => {\n    const content =\n      $('TelePilot Trigger').first().json.message?.content ?? {};\n\n    // PDF, DOCX, XLSX, ZIP и изображения,\n    // отправленные в Telegram как файл\n    const documentFile = content.document?.document;\n\n    if (documentFile?.id) {\n      return documentFile.id;\n    }\n\n    // Изображение, отправленное как обычное фото\n    const photoSizes = content.photo?.sizes ?? [];\n\n    if (photoSizes.length > 0) {\n      // Выбираем самый большой доступный вариант фотографии\n      const largestPhoto = photoSizes.reduce((largest, current) => {\n        const currentFile = current?.photo;\n\n        if (!currentFile?.id) {\n          return largest;\n        }\n\n        const currentSize = Number(\n          currentFile.size ??\n          currentFile.expected_size ??\n          0\n        );\n\n        const largestSize = Number(\n          largest?.size ??\n          largest?.expected_size ??\n          0\n        );\n\n        return currentSize >= largestSize\n          ? currentFile\n          : largest;\n      }, null);\n\n      if (largestPhoto?.id) {\n        return largestPhoto.id;\n      }\n    }\n\n    throw new Error(\n      'Не удалось определить File ID документа или фотографии'\n    );\n  })()\n}}"
+      },
+      "type": "@telepilotco/n8n-nodes-telepilot.telePilot",
+      "typeVersion": 1,
+      "position": [
+        2160,
+        -480
+      ],
+      "id": "90eb178b-fbd1-4613-9e88-c6ad913e415c",
+      "name": "Download file"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "3290d27d-aae0-4ca1-8ded-78233e3ab9b1",
+              "leftValue": "={{\n  (() => {\n    const content =\n      $('TelePilot Trigger').first().json.message?.content ?? {};\n\n    let fileSize = 0;\n\n    // PDF, DOCX, XLSX и другие документы\n    if (content.document?.document) {\n      fileSize = Number(\n        content.document.document.size ||\n        content.document.document.expected_size ||\n        0\n      );\n    }\n\n    // PNG, JPG и другие изображения, отправленные как фото\n    if (content.photo?.sizes?.length) {\n      fileSize = Math.max(\n        ...content.photo.sizes.map(size =>\n          Number(\n            size.photo?.size ||\n            size.photo?.expected_size ||\n            0\n          )\n        )\n      );\n    }\n\n    const limit100Mb = 100 * 1024 * 1024;\n\n    return fileSize > 0 && fileSize < limit100Mb;\n  })()\n}}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1872,
+        -272
+      ],
+      "id": "bc016e19-3708-4ac9-b708-3fb257e8ef95",
+      "name": "If3"
+    },
+    {
+      "parameters": {
+        "jsCode": "const fs = require('fs');\nconst path = require('path');\n\nconst item = $input.first();\n\n// Поддерживаем новую и старую структуру ответа Download file\nconst filePath =\n  item.json.file?.local?.path ??\n  item.json.local?.path;\n\nif (!filePath) {\n  throw new Error(\n    'TelePilot не вернул путь к файлу: file.local.path'\n  );\n}\n\nif (!fs.existsSync(filePath)) {\n  throw new Error(`Файл не найден по пути: ${filePath}`);\n}\n\n// Читаем скачанный файл\nconst buffer = fs.readFileSync(filePath);\n\n// Максимальный размер — 100 МБ\nconst maxSize = 100 * 1024 * 1024;\n\nif (buffer.length >= maxSize) {\n  throw new Error(\n    `Файл должен быть меньше 100 МБ. ` +\n    `Полученный размер: ${(buffer.length / 1024 / 1024).toFixed(2)} МБ`\n  );\n}\n\n// Исходное сообщение из TelePilot Trigger\nconst trigger =\n  $('TelePilot Trigger').first().json;\n\nconst message = trigger.message ?? {};\nconst content = message.content ?? {};\n\n// Документ, отправленный как файл\nconst document = content.document ?? {};\n\n// Определяем имя файла\nlet fileName =\n  document.file_name ??\n  path.basename(filePath);\n\n// Если имя определить не удалось\nif (\n  !fileName ||\n  fileName === '.' ||\n  fileName === path.sep\n) {\n  fileName = `telegram_file_${Date.now()}`;\n}\n\n// Определяем MIME-тип\nlet contentType =\n  document.mime_type ??\n  null;\n\n// Если пришла обычная фотография, у неё может не быть file_name и mime_type\nif (!contentType && content.photo) {\n  contentType = 'image/jpeg';\n\n  const extension = path.extname(fileName);\n\n  if (!extension) {\n    fileName = `telegram_photo_${Date.now()}.jpg`;\n  }\n}\n\n// Запасное значение для остальных документов\nif (!contentType) {\n  const extension = path.extname(fileName).toLowerCase();\n\n  const mimeTypes = {\n    '.pdf': 'application/pdf',\n    '.csv': 'text/csv',\n    '.txt': 'text/plain',\n    '.json': 'application/json',\n    '.xml': 'application/xml',\n\n    '.jpg': 'image/jpeg',\n    '.jpeg': 'image/jpeg',\n    '.png': 'image/png',\n    '.webp': 'image/webp',\n\n    '.doc': 'application/msword',\n    '.docx':\n      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',\n\n    '.xls': 'application/vnd.ms-excel',\n    '.xlsx':\n      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',\n\n    '.ppt': 'application/vnd.ms-powerpoint',\n    '.pptx':\n      'application/vnd.openxmlformats-officedocument.presentationml.presentation',\n\n    '.zip': 'application/zip',\n    '.rar': 'application/vnd.rar',\n    '.7z': 'application/x-7z-compressed',\n  };\n\n  contentType =\n    mimeTypes[extension] ??\n    'application/octet-stream';\n}\n\nreturn [\n  {\n    json: {\n      ...item.json,\n\n      // Это поле передаётся в Convert to File\n      file_base64: buffer.toString('base64'),\n\n      file_name: fileName,\n      content_type: contentType,\n\n      actual_file_size: buffer.length,\n      actual_file_size_mb: Number(\n        (buffer.length / 1024 / 1024).toFixed(2)\n      ),\n\n      telegram_message_id:\n        message.id ?? null,\n\n      telegram_user_id:\n        message.sender_id?.user_id ?? null,\n\n      telegram_chat_id:\n        message.chat_id ?? null,\n\n      local_path: filePath,\n    },\n  },\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2352,
+        -480
+      ],
+      "id": "ea428dde-97fd-4c34-a470-6666cd6a28b7",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "chat_id": "={{ $('Select rows from a table').item.json.tg_user_id }}",
+        "messageText": "=Пришлите пожалуйста файл менее 100 мб, у нас нет возможности подгрузить ее в систему",
+        "message_thread_id": 0
+      },
+      "type": "@telepilotco/n8n-nodes-telepilot.telePilot",
+      "typeVersion": 1,
+      "position": [
+        2256,
+        -256
+      ],
+      "id": "49e96d2a-91d9-4214-981e-cc30ab239ed0",
+      "name": "Send text message1"
+    },
+    {
+      "parameters": {
+        "operation": "uploadFile",
+        "resource_type_file": "raw",
+        "additionalFieldsFile": {}
+      },
+      "type": "n8n-nodes-cloudinary.cloudinary",
+      "typeVersion": 1,
+      "position": [
+        2848,
+        -480
+      ],
+      "id": "1d7840ac-5568-46d4-a687-0acd046c89df",
+      "name": "Upload an asset from file data"
+    },
+    {
+      "parameters": {
+        "operation": "toBinary",
+        "sourceProperty": "file_base64",
+        "options": {
+          "fileName": "={{ $json.file_name }}",
+          "mimeType": "={{ $json.content_type || 'application/octet-stream' }}"
+        }
+      },
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.1,
+      "position": [
+        2560,
+        -480
+      ],
+      "id": "7d2b57c6-641a-458e-b7f2-27d8835294d0",
+      "name": "Convert to File"
+    },
+    {
+      "parameters": {
+        "operation": "select",
+        "schema": {
+          "__rl": true,
+          "mode": "list",
+          "value": "public"
+        },
+        "table": {
+          "__rl": true,
+          "value": "user_task",
+          "mode": "list",
+          "cachedResultName": "user_task"
+        },
+        "limit": 1,
+        "where": {
+          "values": [
+            {
+              "column": "tg_user_id",
+              "value": "={{ String($json.message.sender_id.user_id) }}"
+            },
+            {
+              "column": "airtable_status",
+              "value": "In progress"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -64,
+        0
+      ],
+      "id": "641d6d5d-daac-4512-9f75-0b9b8ae58cdd",
+      "name": "Select rows from a table"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "e6245f0a-5ef0-4ccc-be6a-1284e00e3614",
+              "leftValue": "={{\n  (() => {\n    const content =\n      $('TelePilot Trigger').first().json.message?.content;\n\n    const type = content?._ ?? content?.['@type'];\n\n    const fileTypes = [\n      'messagePhoto',\n      'messageDocument',\n      'messageVideo',\n      'messageAnimation',\n      'messageAudio',\n      'messageVoiceNote',\n      'messageVideoNote',\n      'messageSticker'\n    ];\n\n    return fileTypes.includes(type);\n  })()\n}}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        624,
+        -144
+      ],
+      "id": "d3ba506a-f4ea-44a8-86d4-9da24a5211b0",
+      "name": "If_doc"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "88c3efd2-250d-4180-a23e-499839df95bd",
+              "leftValue": "={{\n  (() => {\n    const content =\n      $('TelePilot Trigger').first().json.message?.content;\n\n    const type = content?._ ?? content?.['@type'];\n\n    // Обычная фотография: PNG, JPG и т. п.\n    if (type === 'messagePhoto') {\n      return true;\n    }\n\n    // Любой документ или файл\n    if (type === 'messageDocument') {\n      const mime = content.document?.mime_type?.toLowerCase() ?? '';\n      const fileName =\n        content.document?.file_name?.toLowerCase() ?? '';\n\n      const excludedMime =\n        mime.startsWith('video/') ||\n        mime.startsWith('audio/') ||\n        mime === 'image/gif';\n\n      const excludedExtension =\n        /\\.(mp4|mov|avi|mkv|webm|gif|mp3|wav|ogg|m4a|aac|flac)$/i.test(fileName);\n\n      return !excludedMime && !excludedExtension;\n    }\n\n    return false;\n  })()\n}}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1456,
+        -240
+      ],
+      "id": "0cd96396-6ed3-42ad-98f1-c1542b99246b",
+      "name": "If_stik"
+    },
+    {
+      "parameters": {
+        "schema": {
+          "__rl": true,
+          "mode": "list",
+          "value": "public"
+        },
+        "table": {
+          "__rl": true,
+          "value": "user_task",
+          "mode": "list",
+          "cachedResultName": "user_task"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "wait": false,
+            "airtable_id": "={{ $('Select rows from a table').item.json.airtable_id }}",
+            "tg_user_id": "={{ $('Select rows from a table').item.json.tg_user_id }}",
+            "tg_name": "={{ $('Select rows from a table').item.json.tg_name }}",
+            "airtable_status": "={{ $('Select rows from a table').item.json.airtable_status }}",
+            "user_message_data": "={{ $now.toISO() }}",
+            "user_message_id": "={{ $('TelePilot Trigger').item.json.message.id }}",
+            "user_message_text": "={{ $('TelePilot Trigger').item.json.message.content.text.text }}",
+            "bot_message_id": "1",
+            "bot_message_date": "={{ $now.toISO() }}",
+            "bot_message_text": "-"
+          },
+          "matchingColumns": [
+            "id"
+          ],
+          "schema": [
+            {
+              "id": "airtable_id",
+              "displayName": "airtable_id",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "tg_user_id",
+              "displayName": "tg_user_id",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "tg_name",
+              "displayName": "tg_name",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "airtable_status",
+              "displayName": "airtable_status",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "user_message_id",
+              "displayName": "user_message_id",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "user_message_data",
+              "displayName": "user_message_data",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "user_message_text",
+              "displayName": "user_message_text",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "bot_message_id",
+              "displayName": "bot_message_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "bot_message_date",
+              "displayName": "bot_message_date",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "bot_message_text",
+              "displayName": "bot_message_text",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "status_bot_message",
+              "displayName": "status_bot_message",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "wait",
+              "displayName": "wait",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "boolean",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "removed": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        2304,
+        80
+      ],
+      "id": "eef50c3b-5c41-4118-a967-2e22bebfdab8",
+      "name": "Insert rows in a table"
+    },
+    {
+      "parameters": {
+        "operation": "search",
+        "base": {
+          "__rl": true,
+          "value": "YOUR_AIRTABLE_BASE_ID",
+          "mode": "id",
+          "cachedResultName": "AI Assistant Admin"
+        },
+        "table": {
+          "__rl": true,
+          "value": "YOUR_TASK_TABLE_ID",
+          "mode": "id",
+          "cachedResultName": "task"
+        },
+        "filterByFormula": "=RECORD_ID() = '{{ $json.Name_task[0] }}'",
+        "returnAll": false,
+        "limit": 1,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        1760,
+        64
+      ],
+      "id": "2be1f9ac-7c70-4b29-bdf2-97c9f9e99598",
+      "name": "Search task"
+    },
+    {
+      "parameters": {
+        "base": {
+          "__rl": true,
+          "value": "YOUR_AIRTABLE_BASE_ID",
+          "mode": "id",
+          "cachedResultName": "AI Assistant Admin"
+        },
+        "table": {
+          "__rl": true,
+          "value": "YOUR_ASSISTANT_TABLE_ID",
+          "mode": "id",
+          "cachedResultName": "ai_assistant"
+        },
+        "id": "={{ $('Select rows from a table').item.json.airtable_id }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        1232,
+        48
+      ],
+      "id": "a8dcf3c5-c32b-42ab-ade0-af0215178b2c",
+      "name": "Search assistant"
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "={{ String($json.airtable_id) + ':' + String($json.tg_user_id) }}",
+        "contextWindowLength": 100
+      },
+      "type": "@n8n/n8n-nodes-langchain.memoryPostgresChat",
+      "typeVersion": 1.3,
+      "position": [
+        2832,
+        288
+      ],
+      "id": "411cb4d2-293a-4278-b2d4-ba9df1e20f62",
+      "name": "Postgres Chat Memory"
+    },
+    {
+      "parameters": {
+        "jsCode": "const allowedStatuses = [\n  'wait_admin',\n  'send_message',\n  'finish',\n];\n\nfunction parseAiResponse(value) {\n  if (value === null || value === undefined) {\n    throw new Error('AI Agent вернул пустой ответ');\n  }\n\n  if (typeof value === 'object') {\n    return value;\n  }\n\n  if (typeof value !== 'string') {\n    throw new Error(\n      `Неизвестный тип ответа AI Agent: ${typeof value}`\n    );\n  }\n\n  const cleaned = value\n    .trim()\n    .replace(/^```json\\s*/i, '')\n    .replace(/^```\\s*/i, '')\n    .replace(/\\s*```$/i, '')\n    .trim();\n\n  try {\n    return JSON.parse(cleaned);\n  } catch (error) {\n    const firstBrace = cleaned.indexOf('{');\n    const lastBrace = cleaned.lastIndexOf('}');\n\n    if (firstBrace === -1 || lastBrace === -1) {\n      throw new Error(\n        `В ответе AI Agent не найден JSON: ${cleaned}`\n      );\n    }\n\n    const jsonFragment = cleaned.slice(\n      firstBrace,\n      lastBrace + 1\n    );\n\n    try {\n      return JSON.parse(jsonFragment);\n    } catch (parseError) {\n      throw new Error(\n        `Не удалось разобрать ответ AI Agent как JSON: ${jsonFragment}`\n      );\n    }\n  }\n}\n\nlet rawResponse =\n  $json.output ??\n  $json.response ??\n  $json.text ??\n  $json;\n\nlet parsed = parseAiResponse(rawResponse);\n\n// Поддержка результата внутри поля output\nif (\n  parsed &&\n  typeof parsed === 'object' &&\n  parsed.output !== undefined &&\n  parsed.status === undefined\n) {\n  parsed = parseAiResponse(parsed.output);\n}\n\n// Поддержка результата внутри поля response\nif (\n  parsed &&\n  typeof parsed === 'object' &&\n  parsed.response !== undefined &&\n  parsed.status === undefined\n) {\n  parsed = parseAiResponse(parsed.response);\n}\n\nconst status = String(parsed.status ?? '').trim();\nconst message = String(parsed.message ?? '').trim();\nlet result = String(parsed.result ?? '').trim();\n\nif (!status) {\n  throw new Error(\n    'В ответе AI Agent отсутствует поле status'\n  );\n}\n\nif (!allowedStatuses.includes(status)) {\n  throw new Error(\n    `Недопустимый статус AI Agent: ${status}`\n  );\n}\n\nif (!message) {\n  throw new Error(\n    'В ответе AI Agent отсутствует поле message'\n  );\n}\n\n// При продолжении диалога результат не нужен\nif (status === 'send_message') {\n  result = '';\n}\n\n// При ожидании администратора вопрос обязателен\nif (status === 'wait_admin' && !result) {\n  throw new Error(\n    'AI Agent вернул статус wait_admin, но не сформировал вопрос для администратора в поле result'\n  );\n}\n\n// При завершении итог обязателен\nif (status === 'finish' && !result) {\n  throw new Error(\n    'AI Agent вернул статус finish, но не сформировал итог задачи в поле result'\n  );\n}\n\nreturn {\n  json: {\n    ...$json,\n    status,\n    message,\n    result,\n  },\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3088,
+        48
+      ],
+      "id": "de385a93-db41-49f1-a264-acacb658bfca",
+      "name": "Code in JavaScript2"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.status }}",
+                    "rightValue": "wait_admin",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "5e512256-db12-4501-86cf-5bc7f6f0b913"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "ждем доп инфу"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "3d35440d-8dff-40b1-9092-cba27df12a47",
+                    "leftValue": "={{ $json.status }}",
+                    "rightValue": "send_message",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "продолжаем диалог"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "cf4467cc-1b7b-4911-93f3-878263ac9d17",
+                    "leftValue": "={{ $json.status }}",
+                    "rightValue": "finish",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "заканчиваем общение"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        3312,
+        16
+      ],
+      "id": "b0069719-3c56-4707-a10e-ea2e6b25b043",
+      "name": "Switch"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "905ebf58-9ffb-463f-9293-556c81408e2f",
+              "leftValue": "={{\n  (() => {\n    const now = $now.setZone('Europe/Moscow');\n\n    const currentSeconds =\n      now.hour * 3600 +\n      now.minute * 60 +\n      now.second;\n\n    const startRaw = $if(\n      $('Search task').isExecuted,\n      $('Search task').first().json.start_bot,\n      $if(\n        $('Search task1').isExecuted,\n        $('Search task1').first().json.start_bot,\n        null\n      )\n    );\n\n    const finishRaw = $if(\n      $('Search task').isExecuted,\n      $('Search task').first().json.stop_bot,\n      $if(\n        $('Search task1').isExecuted,\n        $('Search task1').first().json.stop_bot,\n        null\n      )\n    );\n\n    const start = Number(startRaw);\n    const finish = Number(finishRaw);\n\n    // Если ни одна нода не выполнилась\n    // или время указано некорректно\n    if (\n      startRaw === null ||\n      finishRaw === null ||\n      !Number.isFinite(start) ||\n      !Number.isFinite(finish)\n    ) {\n      return false;\n    }\n\n    // Одинаковое время — разрешено круглосуточно\n    if (start === finish) {\n      return true;\n    }\n\n    // Обычный период, например 09:00–19:00\n    if (start < finish) {\n      return (\n        currentSeconds >= start &&\n        currentSeconds < finish\n      );\n    }\n\n    // Ночной период, например 22:00–06:00\n    return (\n      currentSeconds >= start ||\n      currentSeconds < finish\n    );\n  })()\n}}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        4272,
+        64
+      ],
+      "id": "c772fd16-91dd-4f81-b0ea-de118b5622b3",
+      "name": "If2"
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "chat_id": "={{ $('Select rows from a table').item.json.tg_user_id }}",
+        "messageText": "={{ $('Code in JavaScript2').item.json.message }}",
+        "message_thread_id": 0
+      },
+      "type": "@telepilotco/n8n-nodes-telepilot.telePilot",
+      "typeVersion": 1,
+      "position": [
+        4976,
+        32
+      ],
+      "id": "4753ba9d-3be3-4ce5-8946-3e91767b00b5",
+      "name": "Send text message3"
+    },
+    {
+      "parameters": {
+        "amount": "={{ Math.floor(Math.random() * 281) + 20 }}"
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        4720,
+        32
+      ],
+      "id": "09ec051c-66b3-4e37-8a95-02aa38a93273",
+      "name": "Wait1"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "schema": {
+          "__rl": true,
+          "mode": "list",
+          "value": "public"
+        },
+        "table": {
+          "__rl": true,
+          "value": "user_task",
+          "mode": "list",
+          "cachedResultName": "user_task"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "wait": false,
+            "id": "={{\n  $if(\n    $('Insert rows in a table').isExecuted,\n    $('Insert rows in a table').first().json.id,\n    $if(\n      $('Insert rows in a table1').isExecuted,\n      $('Insert rows in a table1').first().json.id,\n      null\n    )\n  )\n}}",
+            "bot_message_id": "={{ $json.id }}",
+            "bot_message_date": "={{ $now.toISO() }}",
+            "bot_message_text": "={{ $json.content.text.text }}",
+            "status_bot_message": "send"
+          },
+          "matchingColumns": [
+            "id"
+          ],
+          "schema": [
+            {
+              "id": "airtable_id",
+              "displayName": "airtable_id",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "tg_user_id",
+              "displayName": "tg_user_id",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "tg_name",
+              "displayName": "tg_name",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "airtable_status",
+              "displayName": "airtable_status",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "user_message_id",
+              "displayName": "user_message_id",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "user_message_data",
+              "displayName": "user_message_data",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "user_message_text",
+              "displayName": "user_message_text",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "bot_message_id",
+              "displayName": "bot_message_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "bot_message_date",
+              "displayName": "bot_message_date",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "bot_message_text",
+              "displayName": "bot_message_text",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "status_bot_message",
+              "displayName": "status_bot_message",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "wait",
+              "displayName": "wait",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "boolean",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        5232,
+        32
+      ],
+      "id": "4c311765-f4ae-436a-ad4b-53ae3f48f3c8",
+      "name": "Update rows in a table"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "schema": {
+          "__rl": true,
+          "mode": "list",
+          "value": "public"
+        },
+        "table": {
+          "__rl": true,
+          "value": "user_task",
+          "mode": "list",
+          "cachedResultName": "user_task"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "wait": true,
+            "id": "={{\n  $if(\n    $('Insert rows in a table').isExecuted,\n    $('Insert rows in a table').first().json.id,\n    $if(\n      $('Insert rows in a table1').isExecuted,\n      $('Insert rows in a table1').first().json.id,\n      null\n    )\n  )\n}}",
+            "bot_message_id": "=1",
+            "bot_message_date": "={{ $now.toISO() }}",
+            "bot_message_text": "={{ $('Code in JavaScript2').item.json.message }}",
+            "status_bot_message": "send"
+          },
+          "matchingColumns": [
+            "id"
+          ],
+          "schema": [
+            {
+              "id": "airtable_id",
+              "displayName": "airtable_id",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "tg_user_id",
+              "displayName": "tg_user_id",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "tg_name",
+              "displayName": "tg_name",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "airtable_status",
+              "displayName": "airtable_status",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "user_message_id",
+              "displayName": "user_message_id",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "user_message_data",
+              "displayName": "user_message_data",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "user_message_text",
+              "displayName": "user_message_text",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "bot_message_id",
+              "displayName": "bot_message_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "bot_message_date",
+              "displayName": "bot_message_date",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "bot_message_text",
+              "displayName": "bot_message_text",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "status_bot_message",
+              "displayName": "status_bot_message",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "wait",
+              "displayName": "wait",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "boolean",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        5232,
+        224
+      ],
+      "id": "586b0fc5-e705-466a-8045-c98ae66bc4a7",
+      "name": "Update rows in a table1"
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "chat_id": "={{ $('Select rows from a table').item.json.tg_user_id }}",
+        "messageText": "={{ $('Code in JavaScript2').item.json.message }}",
+        "message_thread_id": 0
+      },
+      "type": "@telepilotco/n8n-nodes-telepilot.telePilot",
+      "typeVersion": 1,
+      "position": [
+        4816,
+        448
+      ],
+      "id": "c55fe06f-b020-410d-806e-6a91b1f5fbd2",
+      "name": "Send text message"
+    },
+    {
+      "parameters": {
+        "amount": "={{ Math.floor(Math.random() * 281) + 20 }}"
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        4544,
+        448
+      ],
+      "id": "a92b3107-db40-4f5e-96da-96d66d11204b",
+      "name": "Wait"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "schema": {
+          "__rl": true,
+          "mode": "list",
+          "value": "public"
+        },
+        "table": {
+          "__rl": true,
+          "value": "user_task",
+          "mode": "list",
+          "cachedResultName": "user_task"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "wait": false,
+            "id": "={{\n  $if(\n    $('Insert rows in a table').isExecuted,\n    $('Insert rows in a table').first().json.id,\n    $if(\n      $('Insert rows in a table1').isExecuted,\n      $('Insert rows in a table1').first().json.id,\n      null\n    )\n  )\n}}",
+            "bot_message_id": "={{ $json.id }}",
+            "bot_message_date": "={{ $now.toISO() }}",
+            "bot_message_text": "={{ $json.content.text.text }}",
+            "status_bot_message": "send"
+          },
+          "matchingColumns": [
+            "id"
+          ],
+          "schema": [
+            {
+              "id": "airtable_id",
+              "displayName": "airtable_id",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "tg_user_id",
+              "displayName": "tg_user_id",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "tg_name",
+              "displayName": "tg_name",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "airtable_status",
+              "displayName": "airtable_status",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "user_message_id",
+              "displayName": "user_message_id",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "user_message_data",
+              "displayName": "user_message_data",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "user_message_text",
+              "displayName": "user_message_text",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "bot_message_id",
+              "displayName": "bot_message_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "bot_message_date",
+              "displayName": "bot_message_date",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "bot_message_text",
+              "displayName": "bot_message_text",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "status_bot_message",
+              "displayName": "status_bot_message",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "wait",
+              "displayName": "wait",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "boolean",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        5088,
+        448
+      ],
+      "id": "9828eb5f-77b7-4290-9d09-f6b71fcbc2bc",
+      "name": "Update rows in a table2"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "schema": {
+          "__rl": true,
+          "value": "public",
+          "mode": "list",
+          "cachedResultName": "public"
+        },
+        "table": {
+          "__rl": true,
+          "value": "user_task",
+          "mode": "list",
+          "cachedResultName": "user_task"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "airtable_id": "={{ $('Update rows in a table2').item.json.airtable_id }}",
+            "airtable_status": "done",
+            "wait": false,
+            "status_bot_message": "send"
+          },
+          "matchingColumns": [
+            "airtable_id"
+          ],
+          "schema": [
+            {
+              "id": "airtable_id",
+              "displayName": "airtable_id",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "tg_user_id",
+              "displayName": "tg_user_id",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "tg_name",
+              "displayName": "tg_name",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "airtable_status",
+              "displayName": "airtable_status",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "user_message_id",
+              "displayName": "user_message_id",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "user_message_data",
+              "displayName": "user_message_data",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "user_message_text",
+              "displayName": "user_message_text",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "bot_message_id",
+              "displayName": "bot_message_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "bot_message_date",
+              "displayName": "bot_message_date",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "bot_message_text",
+              "displayName": "bot_message_text",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "status_bot_message",
+              "displayName": "status_bot_message",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "wait",
+              "displayName": "wait",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "boolean",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "removed": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        5952,
+        448
+      ],
+      "id": "d55b23f8-8527-47b2-a833-0eb0fa86d9d0",
+      "name": "Update rows in a table4"
+    },
+    {
+      "parameters": {
+        "operation": "deleteTable",
+        "schema": {
+          "__rl": true,
+          "mode": "list",
+          "value": "public"
+        },
+        "table": {
+          "__rl": true,
+          "value": "n8n_chat_histories",
+          "mode": "list",
+          "cachedResultName": "n8n_chat_histories"
+        },
+        "deleteCommand": "delete",
+        "where": {
+          "values": [
+            {
+              "column": "session_id",
+              "value": "={{ String($json.airtable_id) + ':' + String($json.tg_user_id) }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        6160,
+        448
+      ],
+      "id": "ecfa278e-f029-44af-bcc8-7402670d061f",
+      "name": "Delete table or rows"
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "chat_id": "={{ $('Select rows from a table').item.json.tg_user_id }}",
+        "messageText": "={{ $('Code in JavaScript2').item.json.message }}",
+        "message_thread_id": 0
+      },
+      "type": "@telepilotco/n8n-nodes-telepilot.telePilot",
+      "typeVersion": 1,
+      "position": [
+        4976,
+        -208
+      ],
+      "id": "fba28f9d-058a-4429-b91c-3d7112eb6d9d",
+      "name": "Send text message4"
+    },
+    {
+      "parameters": {
+        "amount": "={{ Math.floor(Math.random() * 281) + 20 }}"
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        4704,
+        -208
+      ],
+      "id": "8950c7b3-9fc1-42b1-834f-abc48cd4675a",
+      "name": "Wait2"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "schema": {
+          "__rl": true,
+          "mode": "list",
+          "value": "public"
+        },
+        "table": {
+          "__rl": true,
+          "value": "user_task",
+          "mode": "list",
+          "cachedResultName": "user_task"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "wait": false,
+            "id": "={{\n  $if(\n    $('Insert rows in a table').isExecuted,\n    $('Insert rows in a table').first().json.id,\n    $if(\n      $('Insert rows in a table1').isExecuted,\n      $('Insert rows in a table1').first().json.id,\n      null\n    )\n  )\n}}",
+            "bot_message_id": "={{ $json.id }}",
+            "bot_message_date": "={{ $now.toISO() }}",
+            "bot_message_text": "={{ $json.content.text.text }}",
+            "status_bot_message": "={{ $('Code in JavaScript2').item.json.result }}"
+          },
+          "matchingColumns": [
+            "id"
+          ],
+          "schema": [
+            {
+              "id": "airtable_id",
+              "displayName": "airtable_id",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "tg_user_id",
+              "displayName": "tg_user_id",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "tg_name",
+              "displayName": "tg_name",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "airtable_status",
+              "displayName": "airtable_status",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "user_message_id",
+              "displayName": "user_message_id",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "user_message_data",
+              "displayName": "user_message_data",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "user_message_text",
+              "displayName": "user_message_text",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "bot_message_id",
+              "displayName": "bot_message_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "bot_message_date",
+              "displayName": "bot_message_date",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "bot_message_text",
+              "displayName": "bot_message_text",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "status_bot_message",
+              "displayName": "status_bot_message",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "wait",
+              "displayName": "wait",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "boolean",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        5248,
+        -208
+      ],
+      "id": "86bcb4b1-e422-4d3f-8ded-341af6c24af7",
+      "name": "Update rows in a table3"
+    },
+    {
+      "parameters": {
+        "chatId": "YOUR_TELEGRAM_ADMIN_CHAT_ID",
+        "text": "=task_number: {{ $('Search task').first().json.task_number ?? 'не указан' }}\nName_task: {{ $('Search task').first().json.Name_task ?? 'не указано' }}\n\n{{ $json.status_bot_message }}",
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "HTML"
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        5504,
+        -208
+      ],
+      "id": "15e78e3c-05a4-46f8-b24e-60f342da3692",
+      "name": "Send a text message1"
+    },
+    {
+      "parameters": {
+        "base": {
+          "__rl": true,
+          "value": "YOUR_AIRTABLE_BASE_ID",
+          "mode": "id",
+          "cachedResultName": "AI Assistant Admin"
+        },
+        "table": {
+          "__rl": true,
+          "value": "YOUR_ASSISTANT_TABLE_ID",
+          "mode": "id",
+          "cachedResultName": "ai_assistant"
+        },
+        "id": "={{ $('Select rows from a table').item.json.airtable_id }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        3136,
+        -480
+      ],
+      "id": "c9c337cb-3395-410e-a4d2-969948fcbe8f",
+      "name": "Search assistant1"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "base": {
+          "__rl": true,
+          "value": "YOUR_AIRTABLE_BASE_ID",
+          "mode": "id",
+          "cachedResultName": "AI Assistant Admin"
+        },
+        "table": {
+          "__rl": true,
+          "value": "YOUR_ASSISTANT_TABLE_ID",
+          "mode": "id",
+          "cachedResultName": "ai_assistant"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "id": "={{ $json.id }}",
+            "docs_url": "={{ $json.docs_url }}"
+          },
+          "matchingColumns": [
+            "id"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": false
+            },
+            {
+              "id": "task_number",
+              "displayName": "task_number",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": true
+            },
+            {
+              "id": "Status",
+              "displayName": "Status",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "options",
+              "options": [
+                {
+                  "name": "new",
+                  "value": "new"
+                },
+                {
+                  "name": "In progress",
+                  "value": "In progress"
+                },
+                {
+                  "name": "Done",
+                  "value": "Done"
+                },
+                {
+                  "name": "stop",
+                  "value": "stop"
+                },
+                {
+                  "name": "finish",
+                  "value": "finish"
+                }
+              ],
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Name_task",
+              "displayName": "Name_task",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "telegram_username",
+              "displayName": "telegram_username",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "person_name",
+              "displayName": "person_name",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "final_result",
+              "displayName": "final_result",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "docs_url",
+              "displayName": "docs_url",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "docs",
+              "displayName": "docs",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "array",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "created_at",
+              "displayName": "created_at",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "dateTime",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "days_limit",
+              "displayName": "days_limit",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "unload log",
+              "displayName": "unload log",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "options",
+              "options": [
+                {
+                  "name": "yes",
+                  "value": "yes"
+                }
+              ],
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Log",
+              "displayName": "Log",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        3536,
+        -480
+      ],
+      "id": "1a9f2eec-3e10-422b-8efc-3b3e28f26ac3",
+      "name": "Update record2"
+    },
+    {
+      "parameters": {
+        "jsCode": "const record = $input.first().json;\n\nconst uploadResult =\n  $('Upload an asset from file data').first().json;\n\n// Берём защищённую ссылку Cloudinary.\n// Если secure_url отсутствует, используем обычный url.\nconst newUrl =\n  uploadResult.secure_url ??\n  uploadResult.url;\n\nif (!newUrl) {\n  throw new Error(\n    'Нода Upload an asset from file data не вернула secure_url или url'\n  );\n}\n\n// Текущее содержимое docs_url из Airtable\nconst currentValue = record.docs_url ?? '';\n\nlet urls = [];\n\n// Поддержка случая, если поле уже является массивом\nif (Array.isArray(currentValue)) {\n  urls = currentValue\n    .map(value => {\n      if (typeof value === 'string') {\n        return value.trim();\n      }\n\n      return value?.url?.trim() ?? '';\n    })\n    .filter(Boolean);\n}\n\n// Поддержка текстового поля Airtable\nif (typeof currentValue === 'string') {\n  const trimmed = currentValue.trim();\n\n  if (trimmed) {\n    // Сначала пробуем прочитать значение как JSON-массив\n    try {\n      const parsed = JSON.parse(trimmed);\n\n      if (Array.isArray(parsed)) {\n        urls = parsed\n          .map(value => {\n            if (typeof value === 'string') {\n              return value.trim();\n            }\n\n            return value?.url?.trim() ?? '';\n          })\n          .filter(Boolean);\n      } else {\n        urls = [trimmed];\n      }\n    } catch {\n      // Обычный текст: одна ссылка на строку.\n      // Также поддерживаются запятые и точки с запятой.\n      urls = trimmed\n        .split(/[\\r\\n,;]+/)\n        .map(value => value.trim())\n        .filter(Boolean);\n    }\n  }\n}\n\n// Добавляем новую ссылку\nurls.push(newUrl.trim());\n\n// Удаляем пустые значения и повторяющиеся ссылки\nconst uniqueUrls = [\n  ...new Set(\n    urls.filter(url => url && /^https?:\\/\\//i.test(url))\n  ),\n];\n\n// Сохраняем ссылки в Airtable:\n// каждая ссылка будет находиться на отдельной строке\nconst docsUrl = uniqueUrls.join('\\n');\n\nreturn [\n  {\n    json: {\n      ...record,\n\n      docs_url: docsUrl,\n\n      // Дополнительные поля для проверки\n      added_doc_url: newUrl,\n      docs_count: uniqueUrls.length,\n    },\n  },\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3344,
+        -480
+      ],
+      "id": "5b4490ff-dbea-4c55-80b5-d89855c03802",
+      "name": "Code in JavaScript3"
+    },
+    {
+      "parameters": {
+        "schema": {
+          "__rl": true,
+          "mode": "list",
+          "value": "public"
+        },
+        "table": {
+          "__rl": true,
+          "value": "user_task",
+          "mode": "list",
+          "cachedResultName": "user_task"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "wait": false,
+            "airtable_id": "={{ $('Select rows from a table').item.json.airtable_id }}",
+            "tg_user_id": "={{ $('Select rows from a table').item.json.tg_user_id }}",
+            "tg_name": "={{ $('Select rows from a table').item.json.tg_name }}",
+            "airtable_status": "={{ $('Select rows from a table').item.json.airtable_status }}",
+            "user_message_data": "={{ $now.toISO() }}",
+            "user_message_id": "={{ $('TelePilot Trigger').item.json.message.id }}",
+            "user_message_text": "получен файл",
+            "bot_message_id": "1",
+            "bot_message_date": "={{ $now.toISO() }}",
+            "bot_message_text": "-"
+          },
+          "matchingColumns": [
+            "id"
+          ],
+          "schema": [
+            {
+              "id": "airtable_id",
+              "displayName": "airtable_id",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "tg_user_id",
+              "displayName": "tg_user_id",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "tg_name",
+              "displayName": "tg_name",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "airtable_status",
+              "displayName": "airtable_status",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "user_message_id",
+              "displayName": "user_message_id",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "user_message_data",
+              "displayName": "user_message_data",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "user_message_text",
+              "displayName": "user_message_text",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "bot_message_id",
+              "displayName": "bot_message_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "bot_message_date",
+              "displayName": "bot_message_date",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "bot_message_text",
+              "displayName": "bot_message_text",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "status_bot_message",
+              "displayName": "status_bot_message",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "wait",
+              "displayName": "wait",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "boolean",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "removed": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        4208,
+        -480
+      ],
+      "id": "2d2f3a35-6bbf-43db-b268-460e9fcd3877",
+      "name": "Insert rows in a table1"
+    },
+    {
+      "parameters": {
+        "operation": "search",
+        "base": {
+          "__rl": true,
+          "value": "YOUR_AIRTABLE_BASE_ID",
+          "mode": "id",
+          "cachedResultName": "AI Assistant Admin"
+        },
+        "table": {
+          "__rl": true,
+          "value": "YOUR_TASK_TABLE_ID",
+          "mode": "id",
+          "cachedResultName": "task"
+        },
+        "filterByFormula": "=RECORD_ID() = '{{ $('Search assistant1').item.json.Name_task[0] }}'",
+        "returnAll": false,
+        "limit": 1,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        3792,
+        -480
+      ],
+      "id": "7571fe1c-4291-49b6-92ed-c5948e3a9e62",
+      "name": "Search task1"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "TelePilot Trigger": {
+      "main": [
+        [
+          {
+            "node": "Select rows from a table",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "If_doc",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Continue Dialog",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Continue Dialog": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update record": {
+      "main": [
+        [
+          {
+            "node": "Send a text message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send a text message": {
+      "main": [
+        [
+          {
+            "node": "Update rows in a table4",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If3": {
+      "main": [
+        [
+          {
+            "node": "Download file",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send text message1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download file": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Convert to File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Convert to File": {
+      "main": [
+        [
+          {
+            "node": "Upload an asset from file data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload an asset from file data": {
+      "main": [
+        [
+          {
+            "node": "Search assistant1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Select rows from a table": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If_doc": {
+      "main": [
+        [
+          {
+            "node": "If_stik",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Search assistant",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If_stik": {
+      "main": [
+        [
+          {
+            "node": "If3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert rows in a table": {
+      "main": [
+        [
+          {
+            "node": "Continue Dialog",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Search task": {
+      "main": [
+        [
+          {
+            "node": "Insert rows in a table",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Search assistant": {
+      "main": [
+        [
+          {
+            "node": "Search task",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres Chat Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "Continue Dialog",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript2": {
+      "main": [
+        [
+          {
+            "node": "Switch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch": {
+      "main": [
+        [
+          {
+            "node": "Wait2",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "If2",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Wait",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait1": {
+      "main": [
+        [
+          {
+            "node": "Send text message3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If2": {
+      "main": [
+        [
+          {
+            "node": "Wait1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Update rows in a table1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send text message3": {
+      "main": [
+        [
+          {
+            "node": "Update rows in a table",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send text message": {
+      "main": [
+        [
+          {
+            "node": "Update rows in a table2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait": {
+      "main": [
+        [
+          {
+            "node": "Send text message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update rows in a table2": {
+      "main": [
+        [
+          {
+            "node": "Update record",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update rows in a table4": {
+      "main": [
+        [
+          {
+            "node": "Delete table or rows",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait2": {
+      "main": [
+        [
+          {
+            "node": "Send text message4",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send text message4": {
+      "main": [
+        [
+          {
+            "node": "Update rows in a table3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update rows in a table3": {
+      "main": [
+        [
+          {
+            "node": "Send a text message1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Search assistant1": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update record2": {
+      "main": [
+        [
+          {
+            "node": "Search task1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript3": {
+      "main": [
+        [
+          {
+            "node": "Update record2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert rows in a table1": {
+      "main": [
+        [
+          {
+            "node": "Continue Dialog",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Search task1": {
+      "main": [
+        [
+          {
+            "node": "Insert rows in a table1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timeSavedMode": "fixed",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  },
+  "tags": []
+}

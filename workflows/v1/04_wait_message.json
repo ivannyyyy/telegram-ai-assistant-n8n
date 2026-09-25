@@ -1,0 +1,406 @@
+{
+  "name": "AI Assistant — Wait Message v1",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 30
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        -224,
+        256
+      ],
+      "id": "95ae998d-b21f-419c-9803-f576325fb60c",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "chat_id": "={{ $('Select rows from a table').item.json.tg_user_id }}",
+        "messageText": "={{ $('Select rows from a table').item.json.bot_message_text }}",
+        "message_thread_id": 0
+      },
+      "type": "@telepilotco/n8n-nodes-telepilot.telePilot",
+      "typeVersion": 1,
+      "position": [
+        992,
+        256
+      ],
+      "id": "0c9daec7-23ee-4eda-be4f-5a8e6bd1335a",
+      "name": "Send text message"
+    },
+    {
+      "parameters": {
+        "operation": "select",
+        "schema": {
+          "__rl": true,
+          "mode": "list",
+          "value": "public"
+        },
+        "table": {
+          "__rl": true,
+          "value": "user_task",
+          "mode": "list",
+          "cachedResultName": "user_task"
+        },
+        "returnAll": true,
+        "where": {
+          "values": [
+            {
+              "column": "wait",
+              "value": "true"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -16,
+        256
+      ],
+      "id": "71076420-5165-4eec-8532-16796759a4a8",
+      "name": "Select rows from a table"
+    },
+    {
+      "parameters": {
+        "base": {
+          "__rl": true,
+          "value": "YOUR_AIRTABLE_BASE_ID",
+          "mode": "id",
+          "cachedResultName": "AI Assistant Admin"
+        },
+        "table": {
+          "__rl": true,
+          "value": "YOUR_ASSISTANT_TABLE_ID",
+          "mode": "id",
+          "cachedResultName": "ai_assistant"
+        },
+        "id": "={{ $json.airtable_id }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        192,
+        256
+      ],
+      "id": "6b80c73e-7214-478e-a74d-ded66b94b45d",
+      "name": "Get assist"
+    },
+    {
+      "parameters": {
+        "operation": "search",
+        "base": {
+          "__rl": true,
+          "value": "YOUR_AIRTABLE_BASE_ID",
+          "mode": "id",
+          "cachedResultName": "AI Assistant Admin"
+        },
+        "table": {
+          "__rl": true,
+          "value": "YOUR_TASK_TABLE_ID",
+          "mode": "id",
+          "cachedResultName": "task"
+        },
+        "filterByFormula": "=RECORD_ID() = '{{ $json.Name_task[0] }}'",
+        "returnAll": false,
+        "limit": 1,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        416,
+        256
+      ],
+      "id": "8b0814d5-21a2-44d2-9086-5b315551142c",
+      "name": "Search task"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "905ebf58-9ffb-463f-9293-556c81408e2f",
+              "leftValue": "={{\n  (() => {\n    const now = $now.setZone('Europe/Moscow');\n\n    const currentSeconds =\n      now.hour * 3600 +\n      now.minute * 60 +\n      now.second;\n\n    const startRaw = $if(\n      $('Search task').isExecuted,\n      $('Search task').first().json.start_bot,\n      $if(\n        $('Search task1').isExecuted,\n        $('Search task1').first().json.start_bot,\n        null\n      )\n    );\n\n    const finishRaw = $if(\n      $('Search task').isExecuted,\n      $('Search task').first().json.stop_bot,\n      $if(\n        $('Search task1').isExecuted,\n        $('Search task1').first().json.stop_bot,\n        null\n      )\n    );\n\n    const start = Number(startRaw);\n    const finish = Number(finishRaw);\n\n    // Если ни одна нода не выполнилась\n    // или время указано некорректно\n    if (\n      startRaw === null ||\n      finishRaw === null ||\n      !Number.isFinite(start) ||\n      !Number.isFinite(finish)\n    ) {\n      return false;\n    }\n\n    // Одинаковое время — разрешено круглосуточно\n    if (start === finish) {\n      return true;\n    }\n\n    // Обычный период, например 09:00–19:00\n    if (start < finish) {\n      return (\n        currentSeconds >= start &&\n        currentSeconds < finish\n      );\n    }\n\n    // Ночной период, например 22:00–06:00\n    return (\n      currentSeconds >= start ||\n      currentSeconds < finish\n    );\n  })()\n}}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        672,
+        256
+      ],
+      "id": "3931e052-aeb1-4063-a853-d34056f7b4fd",
+      "name": "If2"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "schema": {
+          "__rl": true,
+          "mode": "list",
+          "value": "public"
+        },
+        "table": {
+          "__rl": true,
+          "value": "user_task",
+          "mode": "list",
+          "cachedResultName": "user_task"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "wait": false,
+            "id": "={{ $('Select rows from a table').item.json.id }}",
+            "bot_message_id": "={{ $json.id }}",
+            "bot_message_date": "={{ $now.toISO() }}"
+          },
+          "matchingColumns": [
+            "id"
+          ],
+          "schema": [
+            {
+              "id": "airtable_id",
+              "displayName": "airtable_id",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "tg_user_id",
+              "displayName": "tg_user_id",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "tg_name",
+              "displayName": "tg_name",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "airtable_status",
+              "displayName": "airtable_status",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "user_message_id",
+              "displayName": "user_message_id",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "user_message_data",
+              "displayName": "user_message_data",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "user_message_text",
+              "displayName": "user_message_text",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "bot_message_id",
+              "displayName": "bot_message_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "bot_message_date",
+              "displayName": "bot_message_date",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "bot_message_text",
+              "displayName": "bot_message_text",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "status_bot_message",
+              "displayName": "status_bot_message",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "wait",
+              "displayName": "wait",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "boolean",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1168,
+        256
+      ],
+      "id": "14e2ffba-beb4-4b21-9774-c320d6ff101b",
+      "name": "Update rows in a table"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Select rows from a table",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send text message": {
+      "main": [
+        [
+          {
+            "node": "Update rows in a table",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Select rows from a table": {
+      "main": [
+        [
+          {
+            "node": "Get assist",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get assist": {
+      "main": [
+        [
+          {
+            "node": "Search task",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Search task": {
+      "main": [
+        [
+          {
+            "node": "If2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If2": {
+      "main": [
+        [
+          {
+            "node": "Send text message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": []
+}

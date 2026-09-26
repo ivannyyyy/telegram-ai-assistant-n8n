@@ -1,0 +1,730 @@
+{
+  "name": "AI Assistant — Follow Up on Pause v1",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "weeks",
+              "triggerAtDay": [
+                1,
+                2,
+                3,
+                4,
+                5
+              ],
+              "triggerAtHour": 11
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        -2160,
+        -208
+      ],
+      "id": "955cd01d-a7d1-4a6f-8169-1c62e20efbcb",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "operation": "search",
+        "base": {
+          "__rl": true,
+          "value": "YOUR_AIRTABLE_BASE_ID",
+          "mode": "id",
+          "cachedResultName": "AI Assistant Admin"
+        },
+        "table": {
+          "__rl": true,
+          "value": "YOUR_ASSISTANT_TABLE_ID",
+          "mode": "id",
+          "cachedResultName": "ai_assistant"
+        },
+        "filterByFormula": "{Status} = 'In progress'",
+        "returnAll": false,
+        "limit": 1,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        -1856,
+        -208
+      ],
+      "id": "f71e91a3-6226-4f9a-842f-7193acee3779",
+      "name": "Search assistant"
+    },
+    {
+      "parameters": {
+        "operation": "search",
+        "base": {
+          "__rl": true,
+          "value": "YOUR_AIRTABLE_BASE_ID",
+          "mode": "id",
+          "cachedResultName": "AI Assistant Admin"
+        },
+        "table": {
+          "__rl": true,
+          "value": "YOUR_TASK_TABLE_ID",
+          "mode": "id",
+          "cachedResultName": "task"
+        },
+        "filterByFormula": "=RECORD_ID() = '{{ $json.Name_task[0] }}'",
+        "returnAll": false,
+        "limit": 1,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        -1568,
+        -208
+      ],
+      "id": "1953cc07-77bc-4ce7-9a6f-4fb021c9d0f4",
+      "name": "Search task"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Проанализируй историю диалога, доступную через подключённую память.\n\nТекущее время по Москве:\n\n{{ $now.setZone('Europe/Moscow').toFormat(\"yyyy-MM-dd'T'HH:mm:ssZZ\") }}\n\nДата и время последнего сообщения в диалоге:\n\n{{ $json.user_message_data }}\n\nОпредели:\n\n1. Прошло ли с момента последнего сообщения не менее 4 рабочих часов.\n2. Есть ли в истории актуальное обещание пользователя уточнить, проверить, узнать, прислать или сообщить информацию.\n3. Предоставил ли пользователь эту информацию позднее.\n4. Отправлялось ли уже повторное уточнение по этому обещанию.\n\nРабочее время:\n\n* понедельник–пятница;\n* с 09:00 до 18:00;\n* московское время UTC+3;\n* выходные не учитываются.\n\nЕсли все условия для повторного уточнения выполнены, верни одно короткое сообщение пользователю.\n\nВо всех остальных случаях верни только:\n\nstop\n",
+        "options": {
+          "systemMessage": "=Ты — {{ $('Search task').item.json['assistant_ info'] }}.\nТвоя роль: {{ $('Search task').first().json.assistant_role }}.\n\nТы анализируешь историю незакрытого диалога, доступную через подключённую память AI Agent, и определяешь, требуется ли отправить пользователю повторное уточнение.\n\nТы не продолжаешь полноценное общение и не отвечаешь на вопросы пользователя. Твоя единственная задача — определить, обещал ли пользователь предоставить информацию, но до настоящего момента не сделал этого.\n\n## ВХОДНЫЕ ДАННЫЕ\n\nИстория диалога доступна через память AI Agent.\n\nОтдельно в пользовательском сообщении тебе передаются:\n\n* текущее московское время;\n* дата и время последнего сообщения в диалоге;\n* отправитель последнего сообщения.\n\nДля расчёта времени используй дату последнего сообщения, переданную во входных данных. Не пытайся определять её по порядку сообщений в памяти.\n\n## РАБОЧИЙ ГРАФИК\n\nРабочие дни:\n\nПонедельник–пятница.\n\nРабочее время:\n\n09:00–18:00.\n\nЧасовой пояс:\n\nМосковское время — UTC+3.\n\nСуббота и воскресенье полностью исключаются из расчёта.\n\nПраздничные дни не исключаются, если отдельная информация о них не передана.\n\nОтсчёт начинается с момента последнего сообщения в диалоге независимо от отправителя:\n\n* пользователя;\n* ассистента;\n* бота;\n* администратора.\n\nУчитывай только время, попадающее в рабочие интервалы с 09:00 до 18:00 по будним дням.\n\nЕсли сообщение отправлено до 09:00, отсчёт начинается в 09:00 этого рабочего дня.\n\nЕсли сообщение отправлено после 18:00, отсчёт начинается в 09:00 следующего рабочего дня.\n\nЕсли сообщение отправлено в выходной, отсчёт начинается в 09:00 ближайшего понедельника.\n\n## УСЛОВИЯ ДЛЯ ОТПРАВКИ СООБЩЕНИЯ\n\nСформируй сообщение пользователю только при одновременном выполнении всех условий:\n\n1. С момента последнего сообщения прошло не менее 4 рабочих часов.\n2. Пользователь явно обещал уточнить, проверить, узнать, прислать или сообщить информацию.\n3. Пользователь ещё не предоставил обещанную информацию.\n4. Обещание всё ещё актуально.\n5. После обещания в истории ещё не было аналогичного повторного уточнения.\n\nПримеры обещаний пользователя:\n\n* «Я уточню».\n* «Посмотрю и напишу».\n* «Проверю».\n* «Узнаю».\n* «Скину позже».\n* «Отправлю информацию».\n* «Вернусь с ответом».\n* «Дам знать».\n* «Уточню у руководителя».\n* «Уточню у заказчика».\n\nУчитывай не только точную формулировку, но и смысл сообщения.\n\n## ЧТО НЕ ЯВЛЯЕТСЯ ОБЕЩАНИЕМ\n\nНе считай обещанием:\n\n* «Хорошо».\n* «Понял».\n* «Спасибо».\n* «Подумаю», если пользователь не обещал вернуться с ответом.\n* неопределённые формулировки;\n* вопрос пользователя;\n* обещание со стороны ассистента;\n* сообщение о том, что ассистент должен что-либо уточнить;\n* ситуацию, в которой ожидается действие ассистента или администратора.\n\nЕсли пользователь уже предоставил обещанные сведения, сообщение отправлять нельзя.\n\nЕсли пользователь предоставил только часть обещанной информации, можно уточнить только недостающую часть.\n\nЕсли в истории несколько обещаний, используй последнее актуальное невыполненное обещание.\n\n## ТЕКСТ СООБЩЕНИЯ\n\nСформируй одно короткое естественное сообщение, относящееся непосредственно к обещанию пользователя.\n\nПримеры:\n\n«Подскажите, удалось ли уточнить сроки запуска проекта?»\n\n«Получилось проверить доступность оборудования?»\n\n«Удалось узнать стоимость доставки?»\n\n«Подскажите, получилось уточнить этот вопрос?»\n\nАдаптируй сообщение к конкретному контексту диалога.\n\nНе копируй примеры механически.\n\n## ЗАПРЕТЫ\n\nЗапрещено:\n\n* задавать вопросы, не связанные с обещанием пользователя;\n* отвечать на вопросы пользователя;\n* придумывать информацию;\n* делать предположения;\n* повторять уже полученный ответ;\n* начинать новую тему;\n* писать длинное сообщение;\n* повторно приветствовать пользователя;\n* говорить об автоматизации, памяти, базе данных или внутренних процессах.\n\nНе добавляй:\n\n* «Есть ли ещё вопросы?»\n* «Чем ещё помочь?»\n* «Жду вашего ответа».\n* «Напоминаю вам».\n* «Это автоматическое напоминание».\n\n## УСЛОВИЕ STOP\n\nВерни строго:\n\nstop\n\nесли выполняется хотя бы одно условие:\n\n* прошло менее 4 рабочих часов;\n* нет явного обещания пользователя;\n* пользователь уже выполнил обещание;\n* обещание больше не актуально;\n* ожидается действие ассистента или администратора;\n* аналогичное уточнение уже отправлялось;\n* диалог завершён;\n* дата последнего сообщения отсутствует;\n* текущее время отсутствует;\n* невозможно достоверно рассчитать рабочее время;\n* недостаточно контекста;\n* нет уверенности, что сообщение уместно.\n\n## ФОРМАТ ОТВЕТА\n\nВерни только:\n\n* одно готовое сообщение пользователю;\n\nили:\n\nstop\n\nНе возвращай JSON.\n\nНе добавляй объяснения, заголовки, кавычки или Markdown.\n\nСлово stop всегда пиши строчными буквами.\n"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3,
+      "position": [
+        -896,
+        -208
+      ],
+      "id": "77c69766-d2a3-4b3d-b411-47dfd7d956d8",
+      "name": "AI Agent1",
+      "retryOnFail": true,
+      "maxTries": 5
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "={{ String($json.airtable_id) + ':' + String($json.tg_user_id) }}",
+        "contextWindowLength": 100
+      },
+      "type": "@n8n/n8n-nodes-langchain.memoryPostgresChat",
+      "typeVersion": 1.3,
+      "position": [
+        -752,
+        64
+      ],
+      "id": "b88fb53a-c2e2-492b-811d-521300e59564",
+      "name": "Postgres Chat Memory1"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-5",
+          "mode": "list",
+          "cachedResultName": "gpt-5"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        -912,
+        96
+      ],
+      "id": "ed9dd760-6095-4c23-ba7c-55b04efae438",
+      "name": "OpenAI Chat Model1"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "905ebf58-9ffb-463f-9293-556c81408e2f",
+              "leftValue": "={{\n  (() => {\n    const now = $now.setZone('Europe/Moscow');\n\n    const currentSeconds =\n      now.hour * 3600 +\n      now.minute * 60 +\n      now.second;\n\n    const start = Number(\n      $('Search task').item.json.start_bot\n    );\n\n    const finish = Number(\n      $('Search task').item.json.stop_bot\n    );\n\n    if (start === finish) {\n      return true;\n    }\n\n    // Обычный период, например 09:00–19:00\n    if (start < finish) {\n      return currentSeconds >= start && currentSeconds < finish;\n    }\n\n    // Ночной период, например 22:00–06:00\n    return currentSeconds >= start || currentSeconds < finish;\n  })()\n}}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -96,
+        -224
+      ],
+      "id": "c938d5e8-2592-48ee-8756-5a74cf7bde3d",
+      "name": "If2"
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "chat_id": "={{ $('Select rows from a table').item.json.tg_user_id }}",
+        "messageText": "={{ $('AI Agent').item.json.output }}",
+        "message_thread_id": 0
+      },
+      "type": "@telepilotco/n8n-nodes-telepilot.telePilot",
+      "typeVersion": 1,
+      "position": [
+        592,
+        -304
+      ],
+      "id": "b3df44d7-b3d5-42a4-b33b-229510891da3",
+      "name": "Send text message3"
+    },
+    {
+      "parameters": {
+        "amount": "={{ Math.floor(Math.random() * 281) + 20 }}"
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        336,
+        -304
+      ],
+      "id": "30ae15f6-1923-49d5-9283-9d43619939d8",
+      "name": "Wait1",
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "schema": {
+          "__rl": true,
+          "value": "public",
+          "mode": "list",
+          "cachedResultName": "public"
+        },
+        "table": {
+          "__rl": true,
+          "value": "user_task",
+          "mode": "list",
+          "cachedResultName": "user_task"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "wait": false,
+            "airtable_id": "={{ $('Search assistant').item.json.id }}",
+            "tg_user_id": "={{ $json.chat_id }}",
+            "tg_name": "={{ $('Search assistant').item.json.telegram_username }}",
+            "airtable_status": "In progress",
+            "user_message_id": "1",
+            "user_message_text": "-",
+            "bot_message_id": "={{ $json.id }}",
+            "bot_message_date": "={{ $now.toISO() }}",
+            "user_message_data": "={{ $now.toISO() }}",
+            "bot_message_text": "={{ $json.content.text.text }}",
+            "status_bot_message": "send"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "airtable_id",
+              "displayName": "airtable_id",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "tg_user_id",
+              "displayName": "tg_user_id",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "tg_name",
+              "displayName": "tg_name",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "airtable_status",
+              "displayName": "airtable_status",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "user_message_id",
+              "displayName": "user_message_id",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "user_message_data",
+              "displayName": "user_message_data",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "user_message_text",
+              "displayName": "user_message_text",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "bot_message_id",
+              "displayName": "bot_message_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "bot_message_date",
+              "displayName": "bot_message_date",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "bot_message_text",
+              "displayName": "bot_message_text",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "status_bot_message",
+              "displayName": "status_bot_message",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "wait",
+              "displayName": "wait",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "boolean",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        976,
+        -304
+      ],
+      "id": "7ff106d7-61ce-4b22-be96-b2a82917f708",
+      "name": "Insert rows in a table"
+    },
+    {
+      "parameters": {
+        "schema": {
+          "__rl": true,
+          "value": "public",
+          "mode": "list",
+          "cachedResultName": "public"
+        },
+        "table": {
+          "__rl": true,
+          "value": "user_task",
+          "mode": "list",
+          "cachedResultName": "user_task"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "wait": true,
+            "airtable_id": "={{ $('Search assistant').item.json.id }}",
+            "tg_user_id": "={{ $json.sender_id.user_id }}",
+            "tg_name": "={{ $('Search assistant').item.json.telegram_username }}",
+            "airtable_status": "In progress",
+            "user_message_id": "1",
+            "user_message_text": "-",
+            "bot_message_id": "={{ $json.id }}",
+            "bot_message_date": "={{ $now.toISO() }}",
+            "user_message_data": "={{ $now.toISO() }}",
+            "bot_message_text": "={{ $json.content.text.text }}",
+            "status_bot_message": "send"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "airtable_id",
+              "displayName": "airtable_id",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "tg_user_id",
+              "displayName": "tg_user_id",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "tg_name",
+              "displayName": "tg_name",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "airtable_status",
+              "displayName": "airtable_status",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "user_message_id",
+              "displayName": "user_message_id",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "user_message_data",
+              "displayName": "user_message_data",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "user_message_text",
+              "displayName": "user_message_text",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "bot_message_id",
+              "displayName": "bot_message_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "bot_message_date",
+              "displayName": "bot_message_date",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "bot_message_text",
+              "displayName": "bot_message_text",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "status_bot_message",
+              "displayName": "status_bot_message",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "wait",
+              "displayName": "wait",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "boolean",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        736,
+        32
+      ],
+      "id": "03ba3178-4acf-4491-b942-7c5529233bb2",
+      "name": "Insert rows in a table1"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "bfe4c19e-fb9e-4398-b391-b59062847c80",
+              "leftValue": "={{ $json.output }}",
+              "rightValue": "stop",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -512,
+        -240
+      ],
+      "id": "6fac5ff4-1167-4907-a0d6-81d06a1b3046",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "operation": "select",
+        "schema": {
+          "__rl": true,
+          "mode": "list",
+          "value": "public"
+        },
+        "table": {
+          "__rl": true,
+          "value": "user_task",
+          "mode": "list",
+          "cachedResultName": "user_task"
+        },
+        "limit": 1,
+        "where": {
+          "values": [
+            {
+              "column": "airtable_id",
+              "value": "={{ $('Search assistant').item.json.id }}"
+            }
+          ]
+        },
+        "sort": {
+          "values": [
+            {
+              "column": "user_message_data",
+              "direction": "DESC"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -1360,
+        -208
+      ],
+      "id": "12617e30-7daf-463a-8cf6-28c30354a76b",
+      "name": "Select rows from a table"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Search assistant",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Search assistant": {
+      "main": [
+        [
+          {
+            "node": "Search task",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Search task": {
+      "main": [
+        [
+          {
+            "node": "Select rows from a table",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres Chat Memory1": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI Agent1",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model1": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent1",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent1": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If2": {
+      "main": [
+        [
+          {
+            "node": "Wait1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Insert rows in a table1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send text message3": {
+      "main": [
+        [
+          {
+            "node": "Insert rows in a table",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait1": {
+      "main": [
+        [
+          {
+            "node": "Send text message3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [],
+        [
+          {
+            "node": "If2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Select rows from a table": {
+      "main": [
+        [
+          {
+            "node": "AI Agent1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": []
+}

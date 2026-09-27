@@ -1,0 +1,501 @@
+{
+  "name": "AI Assistant — Dialog Characteristics v1",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "characteristic",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "865bb2da-9613-4581-82c3-af9b45c63320",
+      "name": "Webhook"
+    },
+    {
+      "parameters": {
+        "base": {
+          "__rl": true,
+          "value": "YOUR_AIRTABLE_BASE_ID",
+          "mode": "id",
+          "cachedResultName": "AI Assistant Admin"
+        },
+        "table": {
+          "__rl": true,
+          "value": "YOUR_ASSISTANT_TABLE_ID",
+          "mode": "id",
+          "cachedResultName": "ai_assistant"
+        },
+        "id": "={{ $json.query.record_id }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        208,
+        0
+      ],
+      "id": "ad9adbe0-d3dc-47fc-9997-b7c9c895bc45",
+      "name": "Get a record"
+    },
+    {
+      "parameters": {
+        "operation": "select",
+        "schema": {
+          "__rl": true,
+          "mode": "list",
+          "value": "public"
+        },
+        "table": {
+          "__rl": true,
+          "value": "user_task",
+          "mode": "list",
+          "cachedResultName": "user_task"
+        },
+        "returnAll": true,
+        "where": {
+          "values": [
+            {
+              "column": "airtable_id",
+              "value": "={{ $json.id }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        416,
+        0
+      ],
+      "id": "145723ee-2e4a-41a5-a52d-ac130b61909f",
+      "name": "Select rows from a table"
+    },
+    {
+      "parameters": {
+        "jsCode": "const rows = $input.all().map(item => item.json);\n\nif (rows.length === 0) {\n  throw new Error(\n    'В PostgreSQL не найдены сообщения этого диалога'\n  );\n}\n\n// Запись задания/собеседника из Airtable\nconst assistantRecord =\n  $('Get a record').first().json;\n\n/**\n * Имя собеседника\n */\nconst userName = String(\n  assistantRecord.person_name ??\n  assistantRecord.telegram_username ??\n  rows[0]?.tg_name ??\n  'Пользователь'\n)\n  .replace(/^@/, '')\n  .trim();\n\n/**\n * Имя ассистента\n */\nconst assistantInfo =\n  assistantRecord.assistant_info ??\n  assistantRecord['assistant_ info'] ??\n  'Ассистент';\n\nconst assistantName =\n  String(assistantInfo)\n    .split(',')[0]\n    .trim() || 'Ассистент';\n\n/**\n * Номер задачи\n */\nconst taskNumber =\n  assistantRecord.task_number ??\n  'unknown';\n\n/**\n * Проверка, что поле содержит реальный текст\n */\nfunction hasText(value) {\n  if (value === null || value === undefined) {\n    return false;\n  }\n\n  const text = String(value).trim();\n\n  return (\n    text !== '' &&\n    text !== '-' &&\n    text.toLowerCase() !== 'null' &&\n    text.toLowerCase() !== 'undefined'\n  );\n}\n\n/**\n * Поддержка обоих названий колонки:\n * user_message_date\n * user_message_data\n */\nfunction getUserMessageDate(row) {\n  return (\n    row.user_message_date ??\n    row.user_message_data ??\n    null\n  );\n}\n\n/**\n * Поддержка возможных вариантов названия даты ответа\n */\nfunction getBotMessageDate(row) {\n  return (\n    row.bot_message_date ??\n    row.bot_message_data ??\n    null\n  );\n}\n\n/**\n * Преобразование даты в timestamp\n */\nfunction getTimestamp(value) {\n  if (!value) {\n    return null;\n  }\n\n  const parsed = new Date(value);\n  const timestamp = parsed.getTime();\n\n  return Number.isFinite(timestamp)\n    ? timestamp\n    : null;\n}\n\n/**\n * Форматирование даты по Москве\n */\nconst dateFormatter = new Intl.DateTimeFormat(\n  'ru-RU',\n  {\n    timeZone: 'Europe/Moscow',\n    day: '2-digit',\n    month: '2-digit',\n    year: 'numeric',\n    hour: '2-digit',\n    minute: '2-digit',\n    second: '2-digit',\n    hour12: false,\n  }\n);\n\nfunction formatDate(value) {\n  if (!value) {\n    return '';\n  }\n\n  const parsed = new Date(value);\n\n  if (!Number.isFinite(parsed.getTime())) {\n    return '';\n  }\n\n  return dateFormatter.format(parsed);\n}\n\n/**\n * Создаём отдельное событие для каждого сообщения.\n * Затем сортируем все события по реальному времени.\n */\nconst events = [];\nconst seenMessages = new Set();\n\nfunction addEvent({\n  role,\n  speaker,\n  text,\n  date,\n  rowId,\n  order,\n}) {\n  if (!hasText(text)) {\n    return;\n  }\n\n  const normalizedText = String(text).trim();\n\n  /*\n   * Не используем Telegram message_id для удаления дублей,\n   * потому что в старых строках он может повторяться.\n   */\n  const uniqueKey = [\n    role,\n    rowId ?? '',\n    date ?? '',\n    normalizedText,\n  ].join('|');\n\n  if (seenMessages.has(uniqueKey)) {\n    return;\n  }\n\n  seenMessages.add(uniqueKey);\n\n  events.push({\n    role,\n    speaker,\n    text: normalizedText,\n    date,\n    timestamp: getTimestamp(date),\n    rowId: Number(rowId ?? 0),\n    order,\n  });\n}\n\nfor (const row of rows) {\n  addEvent({\n    role: 'user',\n    speaker: userName,\n    text: row.user_message_text,\n    date: getUserMessageDate(row),\n    rowId: row.id,\n    order: 0,\n  });\n\n  addEvent({\n    role: 'assistant',\n    speaker: assistantName,\n    text: row.bot_message_text,\n    date: getBotMessageDate(row),\n    rowId: row.id,\n    order: 1,\n  });\n}\n\nif (events.length === 0) {\n  throw new Error(\n    'Строки найдены, но в них отсутствует текст сообщений'\n  );\n}\n\n/**\n * Сортируем сообщения по реальному времени.\n *\n * При одинаковом времени:\n * 1. сортируем по ID строки;\n * 2. сначала пользователь, затем ассистент.\n */\nevents.sort((a, b) => {\n  if (\n    a.timestamp !== null &&\n    b.timestamp !== null &&\n    a.timestamp !== b.timestamp\n  ) {\n    return a.timestamp - b.timestamp;\n  }\n\n  if (\n    a.timestamp !== null &&\n    b.timestamp === null\n  ) {\n    return -1;\n  }\n\n  if (\n    a.timestamp === null &&\n    b.timestamp !== null\n  ) {\n    return 1;\n  }\n\n  if (a.rowId !== b.rowId) {\n    return a.rowId - b.rowId;\n  }\n\n  return a.order - b.order;\n});\n\n/**\n * Формируем сообщения без вступительного блока.\n */\nconst dialogParts = events.map(event => {\n  const formattedDate = formatDate(event.date);\n\n  const title = formattedDate\n    ? `[${formattedDate}] ${event.speaker}:`\n    : `${event.speaker}:`;\n\n  return `${title}\\n${event.text}`;\n});\n\nconst dialogText = dialogParts.join(\n  '\\n\\n----------------------------------------\\n\\n'\n);\n\n/**\n * BOM нужен для правильного отображения русского текста\n * при открытии TXT-файла.\n */\nconst fileContent =\n  '\\uFEFF' + dialogText;\n\n/**\n * Безопасное имя файла\n */\nfunction safeFilePart(value) {\n  return String(value)\n    .trim()\n    .replace(/[<>:\"/\\\\|?*\\u0000-\\u001F]/g, '_')\n    .replace(/\\s+/g, '_')\n    .slice(0, 60);\n}\n\nconst datePart = new Date()\n  .toISOString()\n  .slice(0, 10);\n\nconst fileName =\n  `dialog_${safeFilePart(taskNumber)}` +\n  `_${safeFilePart(userName)}` +\n  `_${datePart}.txt`;\n\nreturn [\n  {\n    json: {\n      record_id: assistantRecord.id,\n\n      task_number: taskNumber,\n      user_name: userName,\n      assistant_name: assistantName,\n\n      messages_count: events.length,\n\n      dialog_text: dialogText,\n\n      file_base64: Buffer\n        .from(fileContent, 'utf8')\n        .toString('base64'),\n\n      file_name: fileName,\n\n      content_type:\n        'text/plain; charset=utf-8',\n    },\n  },\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        624,
+        0
+      ],
+      "id": "6afb26d3-a1d9-4428-8535-eba867831d06",
+      "name": "Build dialog file"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "base": {
+          "__rl": true,
+          "value": "YOUR_AIRTABLE_BASE_ID",
+          "mode": "id",
+          "cachedResultName": "AI Assistant Admin"
+        },
+        "table": {
+          "__rl": true,
+          "value": "YOUR_ASSISTANT_TABLE_ID",
+          "mode": "id",
+          "cachedResultName": "ai_assistant"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "id": "={{ $('Build dialog file').item.json.record_id }}",
+            "characteristic_person": "={{ $json.output }}"
+          },
+          "matchingColumns": [
+            "id"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": false
+            },
+            {
+              "id": "task_number",
+              "displayName": "task_number",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": true
+            },
+            {
+              "id": "Status",
+              "displayName": "Status",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "options",
+              "options": [
+                {
+                  "name": "new",
+                  "value": "new"
+                },
+                {
+                  "name": "In progress",
+                  "value": "In progress"
+                },
+                {
+                  "name": "Done",
+                  "value": "Done"
+                },
+                {
+                  "name": "stop",
+                  "value": "stop"
+                },
+                {
+                  "name": "finish",
+                  "value": "finish"
+                }
+              ],
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Name_task",
+              "displayName": "Name_task",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "array",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "telegram_username",
+              "displayName": "telegram_username",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "person_name",
+              "displayName": "person_name",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "final_result",
+              "displayName": "final_result",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "unload log copy",
+              "displayName": "unload log copy",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": true
+            },
+            {
+              "id": "interim_result",
+              "displayName": "interim_result",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "docs_url",
+              "displayName": "docs_url",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "unload docs",
+              "displayName": "unload docs",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": true
+            },
+            {
+              "id": "docs",
+              "displayName": "docs",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "array",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "days_limit",
+              "displayName": "days_limit",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "unload log",
+              "displayName": "unload log",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": true
+            },
+            {
+              "id": "Log",
+              "displayName": "Log",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "created_at",
+              "displayName": "created_at",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "dateTime",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "characteristic",
+              "displayName": "characteristic",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": true
+            },
+            {
+              "id": "characteristic_person",
+              "displayName": "characteristic_person",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        1568,
+        0
+      ],
+      "id": "6f582f80-e327-4b72-910b-9e6fb2e83aa0",
+      "name": "Update record"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-5.1",
+          "mode": "list",
+          "cachedResultName": "gpt-5.1"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        1072,
+        224
+      ],
+      "id": "353c6a16-3d00-48cd-ba56-b2646982a595",
+      "name": "OpenAI Chat Model"
+    },
+    {
+      "parameters": {
+        "base": {
+          "__rl": true,
+          "value": "YOUR_AIRTABLE_BASE_ID",
+          "mode": "id",
+          "cachedResultName": "AI Assistant Admin"
+        },
+        "table": {
+          "__rl": true,
+          "value": "YOUR_TASK_TABLE_ID",
+          "mode": "id",
+          "cachedResultName": "task"
+        },
+        "id": "={{ $('Get a record').first().json.Name_task[0] }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        832,
+        0
+      ],
+      "id": "bb84040a-33c3-4e0b-8f35-748ca3890d20",
+      "name": "Get a record1"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Проанализируй диалог:\n{{ $('Build dialog file').item.json.dialog_text }}",
+        "options": {
+          "systemMessage": "=Ты анализируешь диалог бота «{{ $json.assistant_role }}» с пользователем {{ $('Build dialog file').first().json.user_name }} ({{ $json.person_role }}).\n\n{{ $json.Promt_comunication }}"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3,
+      "position": [
+        1072,
+        0
+      ],
+      "id": "850fa884-c7b4-4a2f-9a05-e945da53b0f3",
+      "name": "Continue Dialog",
+      "retryOnFail": true,
+      "maxTries": 5
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Get a record",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get a record": {
+      "main": [
+        [
+          {
+            "node": "Select rows from a table",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Select rows from a table": {
+      "main": [
+        [
+          {
+            "node": "Build dialog file",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build dialog file": {
+      "main": [
+        [
+          {
+            "node": "Get a record1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Continue Dialog",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get a record1": {
+      "main": [
+        [
+          {
+            "node": "Continue Dialog",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Continue Dialog": {
+      "main": [
+        [
+          {
+            "node": "Update record",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": []
+}

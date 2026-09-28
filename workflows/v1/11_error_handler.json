@@ -1,0 +1,82 @@
+{
+  "name": "AI Assistant — Error Handler v1",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "90297a0a-3f44-43e8-a11e-3611c756943c",
+      "name": "Error Trigger"
+    },
+    {
+      "parameters": {
+        "chatId": "YOUR_TELEGRAM_ADMIN_CHAT_ID",
+        "text": "=❌ В автоматизации \"{{ $json.workflow.name }}\" в моделе возникла ошибка",
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "HTML"
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        240,
+        0
+      ],
+      "id": "1dc76652-9578-44ea-aa92-eb0c7ef7b4a2",
+      "name": "Send a text message1"
+    },
+    {
+      "parameters": {
+        "chatId": "YOUR_TELEGRAM_SECONDARY_ADMIN_CHAT_ID",
+        "text": "=❌ В автоматизации \"{{ $json.workflow.name }}\" в моделе возникла ошибка",
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "HTML"
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        512,
+        0
+      ],
+      "id": "5e1edd0d-37be-45b2-9051-23f3b0795e28",
+      "name": "Send a text message"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Error Trigger": {
+      "main": [
+        [
+          {
+            "node": "Send a text message1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send a text message1": {
+      "main": [
+        [
+          {
+            "node": "Send a text message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": []
+}

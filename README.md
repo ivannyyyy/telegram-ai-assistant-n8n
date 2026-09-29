@@ -126,7 +126,6 @@ docs/
   setup.md
   security.md
   known-limitations-v1.md
-  publication-plan.md
 ```
 
 ## Important distinction

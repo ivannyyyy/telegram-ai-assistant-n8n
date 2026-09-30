@@ -8,7 +8,18 @@ A stateful AI assistant built with n8n for task-driven Telegram conversations.
 
 The administrator defines a task, assistant role, target person, communication rules, working hours, goals and task-level knowledge in Airtable. The system can initiate a Telegram conversation, continue it with persistent context, pause delivery outside the allowed time window, ask an administrator for missing information, resume the dialogue after the knowledge base is updated, and produce operational summaries of the conversation.
 
-This repository contains the sanitized public version of **v1**. A later v2 is intended to show how the architecture evolved.
+**Status:** v1 complete — 11 sanitized n8n workflows with architecture, setup, security and data-model documentation.
+
+The repository preserves v1 as a finished baseline. A future v2 can be added separately so the architectural evolution remains visible instead of overwriting the original implementation.
+
+## Documentation
+
+- [Architecture](docs/architecture.md) — system boundaries, state flow, escalation and lifecycle
+- [Workflow Guide](docs/workflows.md) — responsibility of all 11 workflows
+- [Data Model](docs/data-model.md) — Airtable fields, PostgreSQL event state and chat-memory key
+- [Setup](docs/setup.md) — import, credentials, placeholders and deployment assumptions
+- [Security](docs/security.md) — what was removed or replaced before publication
+- [Known Limitations of v1](docs/known-limitations-v1.md) — concrete constraints that motivate a later redesign
 
 ## What this project demonstrates
 
@@ -158,4 +169,6 @@ Exact product/account versions are intentionally not asserted here because they 
 
 ## Status
 
-This repository documents the first production-oriented iteration of the assistant architecture. The main value of v1 is the explicit state and escalation model; known limitations are documented separately so that later revisions can show the architectural progression.
+**v1 is complete.** The repository now contains the full sanitized workflow set and supporting documentation for the first production-oriented iteration of the assistant architecture.
+
+The baseline deliberately keeps its limitations visible. When v2 is reviewed, it can be added as a separate `workflows/v2/` layer with a `docs/v1-to-v2.md` comparison so the repository shows concrete architectural evolution rather than replacing the original version.

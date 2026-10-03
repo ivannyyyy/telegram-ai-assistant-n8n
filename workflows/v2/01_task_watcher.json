@@ -1,0 +1,619 @@
+{
+  "name": "AI Assistant — v2 Task Watcher",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        -900,
+        0
+      ],
+      "id": "6115e5a7-3046-41d1-a7d0-7abfa0c2b45b",
+      "name": "Every minute"
+    },
+    {
+      "parameters": {
+        "operation": "search",
+        "base": {
+          "__rl": true,
+          "value": "YOUR_AIRTABLE_BASE_ID",
+          "mode": "id",
+          "cachedResultName": "AI Assistant v2"
+        },
+        "table": {
+          "__rl": true,
+          "value": "YOUR_V2_TASK_TABLE_ID",
+          "mode": "id",
+          "cachedResultName": "agent_tasks_v3"
+        },
+        "filterByFormula": "{Status} = 'Active'",
+        "returnAll": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        -660,
+        0
+      ],
+      "id": "03f3c636-de66-4b1b-bcc8-1f3e5da9d062",
+      "name": "Get Active Tasks"
+    },
+    {
+      "parameters": {
+        "jsCode": "function optionName(v) {\n  if (\n    v &&\n    typeof v === 'object' &&\n    !Array.isArray(v)\n  ) {\n    return v.name ?? String(v);\n  }\n\n  return String(v ?? '');\n}\n\nfunction multiNames(v) {\n  if (!Array.isArray(v)) return [];\n  return v.map(optionName).filter(Boolean);\n}\n\nfunction linkedRecordId(v) {\n  if (\n    v &&\n    typeof v === 'object' &&\n    !Array.isArray(v)\n  ) {\n    return String(v.id ?? '').trim();\n  }\n\n  return String(v ?? '').trim();\n}\n\nconst out = [];\n\nfor (const item of $input.all()) {\n  const t = item.json;\n\n  const rawDialogs =\n    Array.isArray(t.agent_dialogs_v3)\n      ? t.agent_dialogs_v3\n      : [];\n\n  const dialogIds =\n    rawDialogs\n      .map(linkedRecordId)\n      .filter(Boolean);\n\n  for (const dialogRecordId of dialogIds) {\n    out.push({\n      json: {\n        task_record_id: t.id,\n        task_name: t.Name_task ?? '',\n        dialog_record_id: dialogRecordId,\n\n        timezone:\n          optionName(t.timezone) ||\n          'Europe/Moscow',\n\n        work_days:\n          multiNames(t.work_days).length\n            ? multiNames(t.work_days)\n            : ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'],\n\n        work_start:\n          String(t.work_start ?? '09:00'),\n\n        work_end:\n          String(t.work_end ?? '19:00'),\n\n        delay_min_sec:\n          Number(t.delay_min_sec ?? 20),\n\n        delay_max_sec:\n          Number(t.delay_max_sec ?? 300)\n      }\n    });\n  }\n}\n\nreturn out;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -420,
+        0
+      ],
+      "id": "b2fb5b09-35b3-4d8a-bb85-651643c4ba17",
+      "name": "Expand Task Dialogs"
+    },
+    {
+      "parameters": {
+        "base": {
+          "__rl": true,
+          "value": "YOUR_AIRTABLE_BASE_ID",
+          "mode": "id",
+          "cachedResultName": "AI Assistant v2"
+        },
+        "table": {
+          "__rl": true,
+          "value": "YOUR_V2_DIALOG_TABLE_ID",
+          "mode": "id",
+          "cachedResultName": "agent_dialogs_v3"
+        },
+        "id": "={{ $json.dialog_record_id }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        -180,
+        0
+      ],
+      "id": "b4753617-661a-43a4-a4fe-9d8b63ef17e4",
+      "name": "Get Dialog"
+    },
+    {
+      "parameters": {
+        "jsCode": "\nfunction sql(v) {\n  return String(v ?? '').replace(/'/g, \"''\");\n}\nfunction hhmm(v, fallback) {\n  const m = String(v || fallback).match(/^(\\d{1,2}):(\\d{2})/);\n  if (!m) throw new Error(`Invalid time: ${v}`);\n  return { h: Number(m[1]), m: Number(m[2]) };\n}\n\nconst d = $json;\nconst cfg = $('Expand Task Dialogs').item.json;\nfunction linkedId(v) {\n  if (\n    v &&\n    typeof v === 'object' &&\n    !Array.isArray(v)\n  ) {\n    return String(v.id ?? '').trim();\n  }\n\n  return String(v ?? '').trim();\n}\n\nconst rawTask =\n  Array.isArray(d.task)\n    ? d.task[0]\n    : d.task;\n\nconst taskId = linkedId(rawTask);\n\nif (!d.id) throw new Error('Airtable dialog record id is missing');\nif (!taskId) throw new Error(`Dialog ${d.id} is not linked to agent_tasks_v3`);\nif (!d.telegram_username) throw new Error(`Dialog ${d.id} has no telegram_username`);\n\nconst zone = cfg.timezone || 'Europe/Moscow';\nconst now = $now.setZone(zone);\nconst start = hhmm(cfg.work_start, '09:00');\nconst end = hhmm(cfg.work_end, '19:00');\n\nconst dayMap = { Mon:1, Tue:2, Wed:3, Thu:4, Fri:5, Sat:6, Sun:7 };\nconst allowed = new Set((cfg.work_days || []).map(x => dayMap[x]).filter(Boolean));\nif (!allowed.size) [1,2,3,4,5].forEach(x => allowed.add(x));\n\nlet min = Math.max(0, Math.floor(Number(cfg.delay_min_sec || 0)));\nlet max = Math.max(min, Math.floor(Number(cfg.delay_max_sec || min)));\nconst delay = min + Math.floor(Math.random() * (max - min + 1));\n\nlet runAt = null;\n\n// Перебираем рабочие окна от вчерашнего дня до +8 дней.\n// Это поддерживает и обычный график 09:00–19:00, и ночной 22:00–06:00.\nfor (let off = -1; off <= 8 && !runAt; off++) {\n  const day = now.startOf('day').plus({ days: off });\n  if (!allowed.has(day.weekday)) continue;\n\n  let ws = day.set({ hour:start.h, minute:start.m, second:0, millisecond:0 });\n  let we = day.set({ hour:end.h, minute:end.m, second:0, millisecond:0 });\n\n  if (we <= ws) we = we.plus({ days: 1 });\n  if (now >= we) continue;\n\n  const base = now > ws ? now : ws;\n  const candidate = base.plus({ seconds: delay });\n\n  if (candidate < we) runAt = candidate;\n}\n\nif (!runAt) {\n  throw new Error('Could not calculate next allowed work window');\n}\n\nconst scheduledRunAt = runAt.toUTC().toISO();\n\nconst q = `\nWITH upsert_dialog AS (\n  INSERT INTO agent_v3.dialogs (\n    airtable_dialog_id,\n    airtable_task_id,\n    person_name,\n    person_role,\n    telegram_username,\n    status,\n    next_action_at,\n    metadata,\n    updated_at\n  )\n  VALUES (\n    '${sql(d.id)}',\n    '${sql(taskId)}',\n    NULLIF('${sql(d.person_name)}', ''),\n    NULLIF('${sql(d.person_role)}', ''),\n    '${sql(d.telegram_username)}',\n    'scheduled',\n    '${sql(scheduledRunAt)}'::timestamptz,\n    jsonb_build_object('task_status','Active'),\n    NOW()\n  )\n  ON CONFLICT (airtable_dialog_id)\n  DO UPDATE SET\n    airtable_task_id = EXCLUDED.airtable_task_id,\n    person_name = EXCLUDED.person_name,\n    person_role = EXCLUDED.person_role,\n    telegram_username = EXCLUDED.telegram_username,\n    metadata = jsonb_set(\n      COALESCE(agent_v3.dialogs.metadata, '{}'::jsonb),\n      '{task_status}',\n      '\"Active\"'::jsonb,\n      true\n    ),\n    status = CASE\n      WHEN agent_v3.dialogs.status = 'new' THEN 'scheduled'\n      ELSE agent_v3.dialogs.status\n    END,\n    next_action_at = CASE\n      WHEN agent_v3.dialogs.status IN ('new','scheduled')\n      THEN EXCLUDED.next_action_at\n      ELSE agent_v3.dialogs.next_action_at\n    END,\n    updated_at = NOW()\n  RETURNING id, airtable_dialog_id, airtable_task_id, next_action_at\n),\ncreate_event AS (\n  INSERT INTO agent_v3.events (\n    dialog_id,\n    event_type,\n    run_at,\n    status,\n    payload\n  )\n  SELECT\n    ud.id,\n    'start_dialog',\n    '${sql(scheduledRunAt)}'::timestamptz,\n    'pending',\n    jsonb_build_object(\n      'airtable_task_id', ud.airtable_task_id,\n      'airtable_dialog_id', ud.airtable_dialog_id\n    )\n  FROM upsert_dialog ud\n  WHERE NOT EXISTS (\n    SELECT 1\n    FROM agent_v3.events e\n    WHERE e.dialog_id = ud.id\n      AND e.event_type = 'start_dialog'\n      AND e.status IN ('pending','processing','done')\n  )\n  RETURNING dialog_id\n)\nSELECT\n  id AS dialog_db_id,\n  airtable_dialog_id,\n  airtable_task_id,\n  next_action_at\nFROM upsert_dialog;\n`;\n\nreturn [{\n  json: {\n    ...d,\n    airtable_task_id: taskId,\n    scheduled_run_at: scheduledRunAt,\n    delay_sec: delay,\n    sql_query: q\n  }\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        60,
+        0
+      ],
+      "id": "98e0a454-fcc7-416f-b8f1-eabfcc619589",
+      "name": "Prepare DB Upsert + Schedule"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "={{ $json.sql_query }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        340,
+        0
+      ],
+      "id": "f8953389-ddb4-4213-a1bb-17ec37025839",
+      "name": "Upsert Dialog + Start Event"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "base": {
+          "__rl": true,
+          "value": "YOUR_AIRTABLE_BASE_ID",
+          "mode": "id",
+          "cachedResultName": "AI Assistant v2"
+        },
+        "table": {
+          "__rl": true,
+          "value": "YOUR_V2_DIALOG_TABLE_ID",
+          "mode": "id",
+          "cachedResultName": "agent_dialogs_v3"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "id": "={{ $json.airtable_dialog_id }}",
+            "Status": "Scheduled",
+            "next_action_at": "={{ $json.next_action_at }}"
+          },
+          "matchingColumns": [
+            "id"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": false
+            },
+            {
+              "id": "Status",
+              "displayName": "Status",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "options",
+              "options": [
+                {
+                  "name": "New",
+                  "value": "New"
+                },
+                {
+                  "name": "Scheduled",
+                  "value": "Scheduled"
+                },
+                {
+                  "name": "Active",
+                  "value": "Active"
+                },
+                {
+                  "name": "Waiting user",
+                  "value": "Waiting user"
+                },
+                {
+                  "name": "Waiting owner",
+                  "value": "Waiting owner"
+                },
+                {
+                  "name": "Done",
+                  "value": "Done"
+                },
+                {
+                  "name": "Error",
+                  "value": "Error"
+                }
+              ],
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "next_action_at",
+              "displayName": "next_action_at",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "dateTime",
+              "readOnly": false,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        620,
+        -100
+      ],
+      "id": "b2b4a455-8e0e-4413-bb90-5915d28759ad",
+      "name": "Set Dialog Scheduled"
+    },
+    {
+      "parameters": {
+        "jsCode": "const out = [];\n\nfor (const item of $input.all()) {\n  const d = item.json;\n\n  let status = d.Status ?? d.status ?? '';\n\n  if (\n    status &&\n    typeof status === 'object' &&\n    !Array.isArray(status)\n  ) {\n    status = status.name ?? '';\n  }\n\n  status = String(status).trim().toLowerCase();\n\n  // Task Watcher schedules only never-started dialogs.\n  // Existing scheduled/active/waiting/done dialogs are left untouched.\n  if (status !== 'new') {\n    continue;\n  }\n\n  out.push(item);\n}\n\nreturn out;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -260,
+        80
+      ],
+      "id": "ce3c4b01-a36c-4aa6-89b6-b5d9845b707f",
+      "name": "Only New Dialogs"
+    },
+    {
+      "parameters": {
+        "jsCode": "function sql(v) {\n  return String(v ?? '').replace(/'/g, \"''\");\n}\n\nfunction optionName(v) {\n  if (v && typeof v === 'object' && !Array.isArray(v)) {\n    return v.name ?? '';\n  }\n  return String(v ?? '');\n}\n\nfunction hhmm(v, fallback) {\n  const m = String(v || fallback).match(/^(\\d{1,2}):(\\d{2})/);\n  if (!m) throw new Error(`Invalid time: ${v}`);\n  return { h: Number(m[1]), m: Number(m[2]) };\n}\n\nfunction multiNames(v) {\n  if (!Array.isArray(v)) return [];\n  return v.map(optionName).filter(Boolean);\n}\n\nconst t = $json;\nconst taskId = String(t.id ?? '').trim();\n\nif (!taskId) {\n  throw new Error('Active task Airtable id is missing');\n}\n\nconst zone =\n  optionName(t.timezone) ||\n  'Europe/Moscow';\n\nconst now = $now.setZone(zone);\n\nconst start = hhmm(\n  t.work_start,\n  '09:00'\n);\n\nconst end = hhmm(\n  t.work_end,\n  '19:00'\n);\n\nconst dayMap = {\n  Mon: 1,\n  Tue: 2,\n  Wed: 3,\n  Thu: 4,\n  Fri: 5,\n  Sat: 6,\n  Sun: 7\n};\n\nconst workDays = multiNames(t.work_days);\nconst allowed = new Set(\n  workDays\n    .map(x => dayMap[x])\n    .filter(Boolean)\n);\n\nif (!allowed.size) {\n  [1, 2, 3, 4, 5].forEach(x => allowed.add(x));\n}\n\nlet min = Math.max(\n  0,\n  Math.floor(Number(t.delay_min_sec ?? 20))\n);\n\nlet max = Math.max(\n  min,\n  Math.floor(Number(t.delay_max_sec ?? 300))\n);\n\nconst delay =\n  min +\n  Math.floor(\n    Math.random() * (max - min + 1)\n  );\n\nlet resumeAt = null;\n\n// Find nearest allowed work window.\n// Supports both day and overnight schedules.\nfor (\n  let off = -1;\n  off <= 8 && !resumeAt;\n  off++\n) {\n  const day =\n    now\n      .startOf('day')\n      .plus({ days: off });\n\n  if (!allowed.has(day.weekday)) {\n    continue;\n  }\n\n  let ws =\n    day.set({\n      hour: start.h,\n      minute: start.m,\n      second: 0,\n      millisecond: 0\n    });\n\n  let we =\n    day.set({\n      hour: end.h,\n      minute: end.m,\n      second: 0,\n      millisecond: 0\n    });\n\n  if (we <= ws) {\n    we = we.plus({ days: 1 });\n  }\n\n  if (now >= we) {\n    continue;\n  }\n\n  const base =\n    now > ws\n      ? now\n      : ws;\n\n  const candidate =\n    base.plus({ seconds: delay });\n\n  if (candidate < we) {\n    resumeAt = candidate;\n  }\n}\n\nif (!resumeAt) {\n  throw new Error(\n    'Could not calculate resume work window'\n  );\n}\n\nconst resumeIso =\n  resumeAt\n    .toUTC()\n    .toISO();\n\nconst query = `\nUPDATE agent_v3.events e\nSET\n  run_at =\n    '${sql(resumeIso)}'::timestamptz,\n\n  payload =\n    (\n      COALESCE(\n        e.payload,\n        '{}'::jsonb\n      )\n      - 'deferred_by_task_status'\n      - 'deferred_original_run_at'\n      - 'deferred_at'\n    ),\n\n  updated_at = NOW()\n\nFROM agent_v3.dialogs d\n\nWHERE\n  e.dialog_id = d.id\n\n  AND\n  d.airtable_task_id =\n    '${sql(taskId)}'\n\n  AND\n  e.status = 'pending'\n\n  AND\n  COALESCE(\n    e.payload\n      ->> 'deferred_by_task_status',\n    ''\n  ) = 'Paused'\n\nRETURNING\n  e.id AS event_id,\n  e.dialog_id,\n  e.event_type,\n  e.run_at,\n  e.status;\n`;\n\nreturn [{\n  json: {\n    ...t,\n    task_record_id: taskId,\n    resume_run_at: resumeIso,\n    sql_query: query\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -820,
+        420
+      ],
+      "id": "42e8efb1-7de1-4347-985e-76159b04938a",
+      "name": "Prepare Resume Deferred Events"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "={{ $json.sql_query }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -560,
+        420
+      ],
+      "id": "a28e3c3f-b9fd-408e-af3d-ece2e55e5a4d",
+      "name": "Resume Deferred Events"
+    },
+    {
+      "parameters": {
+        "operation": "search",
+        "base": {
+          "__rl": true,
+          "value": "YOUR_AIRTABLE_BASE_ID",
+          "mode": "id",
+          "cachedResultName": "AI Assistant v2"
+        },
+        "table": {
+          "__rl": true,
+          "value": "YOUR_V2_TASK_TABLE_ID",
+          "mode": "id",
+          "cachedResultName": "agent_tasks_v3"
+        },
+        "filterByFormula": "{Status} = 'Done'",
+        "returnAll": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        -1080,
+        620
+      ],
+      "id": "c66cd97b-f404-4d69-8678-6fb8e0ef03a4",
+      "name": "Get Done Tasks"
+    },
+    {
+      "parameters": {
+        "jsCode": "function sql(v) {\n  return String(v ?? '').replace(/'/g, \"''\");\n}\n\nconst taskId =\n  String($json.id ?? '').trim();\n\nif (!taskId) {\n  throw new Error(\n    'Done task Airtable id is missing'\n  );\n}\n\nconst query = `\nUPDATE agent_v3.events e\nSET\n  status = 'cancelled',\n  locked_at = NULL,\n  last_error =\n    'Task status = Done',\n  updated_at = NOW()\n\nFROM agent_v3.dialogs d\n\nWHERE\n  e.dialog_id = d.id\n\n  AND\n  d.airtable_task_id =\n    '${sql(taskId)}'\n\n  AND\n  e.status = 'pending'\n\nRETURNING\n  e.id AS event_id,\n  e.dialog_id,\n  e.event_type,\n  e.status;\n`;\n\nreturn [{\n  json: {\n    ...$json,\n    task_record_id: taskId,\n    sql_query: query\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -820,
+        620
+      ],
+      "id": "f934249a-f955-44b5-8886-9da3188fba35",
+      "name": "Prepare Cancel Done Events"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "={{ $json.sql_query }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -560,
+        620
+      ],
+      "id": "c53f7136-e22f-4c7f-b295-6b841612581e",
+      "name": "Cancel Pending Events for Done Task"
+    },
+    {
+      "parameters": {
+        "jsCode": "function sql(v) {\n  return String(v ?? '').replace(/'/g, \"''\");\n}\n\nconst taskId = String($json.id ?? '').trim();\nif (!taskId) {\n  throw new Error('Active task Airtable id is missing');\n}\n\nconst query = `\nUPDATE agent_v3.dialogs\nSET\n  metadata = jsonb_set(\n    COALESCE(metadata, '{}'::jsonb),\n    '{task_status}',\n    '\"Active\"'::jsonb,\n    true\n  ),\n  updated_at = NOW()\nWHERE airtable_task_id = '${sql(taskId)}'\nRETURNING\n  id AS dialog_id,\n  airtable_dialog_id,\n  airtable_task_id,\n  metadata ->> 'task_status' AS task_status;\n`;\n\nreturn [{\n  json: {\n    ...$json,\n    task_record_id: taskId,\n    sql_query: query\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -820,
+        220
+      ],
+      "id": "91b57213-e29b-48ac-9f35-de599651179f",
+      "name": "Prepare Sync Active Task State"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "={{ $json.sql_query }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -560,
+        220
+      ],
+      "id": "fe4bf11f-4421-47a4-8e07-222c1df7035e",
+      "name": "Sync Active Task State"
+    },
+    {
+      "parameters": {
+        "operation": "search",
+        "base": {
+          "__rl": true,
+          "value": "YOUR_AIRTABLE_BASE_ID",
+          "mode": "id",
+          "cachedResultName": "AI Assistant v2"
+        },
+        "table": {
+          "__rl": true,
+          "value": "YOUR_V2_TASK_TABLE_ID",
+          "mode": "id",
+          "cachedResultName": "agent_tasks_v3"
+        },
+        "filterByFormula": "{Status} = 'Paused'",
+        "returnAll": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        -1080,
+        820
+      ],
+      "id": "e0311897-b463-4ebf-8699-aeb6569d785e",
+      "name": "Get Paused Tasks"
+    },
+    {
+      "parameters": {
+        "jsCode": "function sql(v) {\n  return String(v ?? '').replace(/'/g, \"''\");\n}\n\nconst taskId = String($json.id ?? '').trim();\nif (!taskId) {\n  throw new Error('Paused task Airtable id is missing');\n}\n\nconst query = `\nUPDATE agent_v3.dialogs\nSET\n  metadata = jsonb_set(\n    COALESCE(metadata, '{}'::jsonb),\n    '{task_status}',\n    '\"Paused\"'::jsonb,\n    true\n  ),\n  updated_at = NOW()\nWHERE airtable_task_id = '${sql(taskId)}'\nRETURNING\n  id AS dialog_id,\n  airtable_dialog_id,\n  airtable_task_id,\n  metadata ->> 'task_status' AS task_status;\n`;\n\nreturn [{\n  json: {\n    ...$json,\n    task_record_id: taskId,\n    sql_query: query\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -820,
+        820
+      ],
+      "id": "974839f7-ff91-41ff-8ad3-f339f418ddef",
+      "name": "Prepare Sync Paused Task State"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "={{ $json.sql_query }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -560,
+        820
+      ],
+      "id": "71595244-d6f1-45ad-afc7-8947c9a6eec1",
+      "name": "Sync Paused Task State"
+    },
+    {
+      "parameters": {
+        "jsCode": "function sql(v) {\n  return String(v ?? '').replace(/'/g, \"''\");\n}\n\nconst taskId = String($json.id ?? '').trim();\nif (!taskId) {\n  throw new Error('Done task Airtable id is missing');\n}\n\nconst query = `\nUPDATE agent_v3.dialogs\nSET\n  metadata = jsonb_set(\n    COALESCE(metadata, '{}'::jsonb),\n    '{task_status}',\n    '\"Done\"'::jsonb,\n    true\n  ),\n  updated_at = NOW()\nWHERE airtable_task_id = '${sql(taskId)}'\nRETURNING\n  id AS dialog_id,\n  airtable_dialog_id,\n  airtable_task_id,\n  metadata ->> 'task_status' AS task_status;\n`;\n\nreturn [{\n  json: {\n    ...$json,\n    task_record_id: taskId,\n    sql_query: query\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -820,
+        700
+      ],
+      "id": "add555a8-f4a2-484c-832f-bf018c7d374e",
+      "name": "Prepare Sync Done Task State"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "={{ $json.sql_query }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -560,
+        700
+      ],
+      "id": "39048c51-b52c-488a-8831-e8a8e538fb70",
+      "name": "Sync Done Task State"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Every minute": {
+      "main": [
+        [
+          {
+            "node": "Get Active Tasks",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Get Done Tasks",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Get Paused Tasks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Expand Task Dialogs": {
+      "main": [
+        [
+          {
+            "node": "Get Dialog",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Dialog": {
+      "main": [
+        [
+          {
+            "node": "Only New Dialogs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare DB Upsert + Schedule": {
+      "main": [
+        [
+          {
+            "node": "Upsert Dialog + Start Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upsert Dialog + Start Event": {
+      "main": [
+        [
+          {
+            "node": "Set Dialog Scheduled",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Only New Dialogs": {
+      "main": [
+        [
+          {
+            "node": "Prepare DB Upsert + Schedule",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Active Tasks": {
+      "main": [
+        [
+          {
+            "node": "Expand Task Dialogs",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Prepare Resume Deferred Events",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Prepare Sync Active Task State",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Resume Deferred Events": {
+      "main": [
+        [
+          {
+            "node": "Resume Deferred Events",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Done Tasks": {
+      "main": [
+        [
+          {
+            "node": "Prepare Cancel Done Events",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Prepare Sync Done Task State",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Cancel Done Events": {
+      "main": [
+        [
+          {
+            "node": "Cancel Pending Events for Done Task",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Sync Active Task State": {
+      "main": [
+        [
+          {
+            "node": "Sync Active Task State",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Paused Tasks": {
+      "main": [
+        [
+          {
+            "node": "Prepare Sync Paused Task State",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Sync Paused Task State": {
+      "main": [
+        [
+          {
+            "node": "Sync Paused Task State",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Sync Done Task State": {
+      "main": [
+        [
+          {
+            "node": "Sync Done Task State",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timeSavedMode": "fixed"
+  },
+  "tags": []
+}

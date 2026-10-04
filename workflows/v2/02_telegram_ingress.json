@@ -1,0 +1,1603 @@
+{
+  "name": "AI Assistant — v2 Telegram Ingress",
+  "nodes": [
+    {
+      "parameters": {
+        "events": [
+          "updateNewMessage"
+        ],
+        "options": {}
+      },
+      "type": "@telepilotco/n8n-nodes-telepilot.telePilotTrigger",
+      "typeVersion": 1,
+      "position": [
+        -1040,
+        0
+      ],
+      "id": "6acc3fa3-4902-4daa-bfdd-e6ba92072b87",
+      "name": "TelePilot Trigger"
+    },
+    {
+      "parameters": {
+        "jsCode": "const msg = $json.message ?? {};\n\nif (msg.is_outgoing === true) {\n  return [];\n}\n\nconst telegramMessageId = msg.id ?? null;\nconst telegramUserId = msg.sender_id?.user_id ?? null;\nconst telegramChatId = msg.chat_id ?? null;\n\nconst replyToMessageId =\n  msg.reply_to?.message_id ??\n  msg.reply_to_message_id ??\n  msg.reply_to_message?.id ??\n  msg.reply_to_message?.message_id ??\n  msg.reply_to?.id ??\n  null;\n\nif (telegramMessageId === null) {\n  return [];\n}\n\nif (telegramUserId === null && telegramChatId === null) {\n  return [];\n}\n\nconst content = msg.content ?? {};\nconst contentType = content._ ?? content['@type'] ?? 'unknown';\n\nlet messageType = 'other';\nlet text = '';\n\nlet hasAttachment = false;\nlet fileId = '';\nlet fileName = '';\nlet mimeType = '';\nlet fileSizeBytes = 0;\nlet attachmentKind = '';\n\nswitch (contentType) {\n  case 'messageText':\n    messageType = 'text';\n    text = content.text?.text ?? '';\n    break;\n\n  case 'messagePhoto': {\n    messageType = 'photo';\n    text =\n      content.caption?.text ??\n      content.text?.text ??\n      '';\n\n    const sizes = Array.isArray(content.photo?.sizes)\n      ? content.photo.sizes\n      : [];\n\n    let largest = null;\n\n    for (const size of sizes) {\n      const f = size?.photo;\n      if (!f?.id) continue;\n\n      const bytes = Number(\n        f.size ??\n        f.expected_size ??\n        0\n      );\n\n      const largestBytes = Number(\n        largest?.size ??\n        largest?.expected_size ??\n        0\n      );\n\n      if (!largest || bytes >= largestBytes) {\n        largest = f;\n      }\n    }\n\n    if (largest?.id) {\n      hasAttachment = true;\n      attachmentKind = 'photo';\n      fileId = String(largest.id);\n      fileSizeBytes = Number(\n        largest.size ??\n        largest.expected_size ??\n        0\n      );\n      mimeType = 'image/jpeg';\n      fileName =\n        `telegram_photo_${telegramMessageId}.jpg`;\n    }\n\n    break;\n  }\n\n  case 'messageDocument': {\n    messageType = 'document';\n\n    const doc = content.document ?? {};\n    const file = doc.document ?? {};\n\n    text =\n      content.caption?.text ??\n      doc.file_name ??\n      '';\n\n    if (file?.id) {\n      hasAttachment = true;\n      attachmentKind = 'document';\n      fileId = String(file.id);\n      fileSizeBytes = Number(\n        file.size ??\n        file.expected_size ??\n        0\n      );\n      fileName =\n        String(\n          doc.file_name ??\n          `telegram_file_${telegramMessageId}`\n        );\n      mimeType =\n        String(\n          doc.mime_type ??\n          'application/octet-stream'\n        );\n    }\n\n    break;\n  }\n\n  case 'messageVideo':\n  case 'messageAnimation':\n  case 'messageVideoNote':\n    messageType = 'video';\n    text = content.caption?.text ?? '';\n    break;\n\n  case 'messageVoiceNote':\n    messageType = 'voice';\n    text = content.caption?.text ?? '';\n    break;\n\n  case 'messageAudio':\n    messageType = 'audio';\n    text =\n      content.caption?.text ??\n      content.audio?.file_name ??\n      '';\n    break;\n\n  case 'messageSticker':\n    messageType = 'sticker';\n    text = content.sticker?.emoji ?? '';\n    break;\n}\n\nconst rawDate = Number(msg.date ?? 0);\n\nlet telegramCreatedAt = new Date().toISOString();\n\nif (Number.isFinite(rawDate) && rawDate > 0) {\n  telegramCreatedAt =\n    new Date(rawDate * 1000).toISOString();\n}\n\nconst maxFileBytes = 100 * 1024 * 1024;\n\nconst fileSizeKnown =\n  hasAttachment &&\n  Number.isFinite(fileSizeBytes) &&\n  fileSizeBytes > 0;\n\nconst fileTooLarge =\n  fileSizeKnown &&\n  fileSizeBytes > maxFileBytes;\n\nconst safeToDownload =\n  !hasAttachment ||\n  (\n    fileSizeKnown &&\n    !fileTooLarge\n  );\n\nreturn [{\n  json: {\n    telegram_message_id: String(telegramMessageId),\n\n    telegram_user_id:\n      telegramUserId === null\n        ? ''\n        : String(telegramUserId),\n\n    telegram_chat_id:\n      telegramChatId === null\n        ? ''\n        : String(telegramChatId),\n\n    reply_to_message_id:\n      replyToMessageId === null\n        ? ''\n        : String(replyToMessageId),\n\n    message_type: messageType,\n    text,\n\n    telegram_created_at: telegramCreatedAt,\n\n    raw_content_type: contentType,\n    raw_message_json: JSON.stringify(msg),\n\n    has_attachment: hasAttachment,\n    attachment_kind: attachmentKind,\n    file_id: fileId,\n    file_name: fileName,\n    mime_type: mimeType,\n    file_size_bytes: fileSizeBytes,\n    file_size_mb:\n      fileSizeBytes > 0\n        ? Number(\n            (fileSizeBytes / 1024 / 1024).toFixed(2)\n          )\n        : 0,\n    file_size_known: fileSizeKnown,\n    file_too_large: fileTooLarge,\n    safe_to_download: safeToDownload,\n    max_file_size_bytes: maxFileBytes,\n    max_file_size_mb: 100\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1740,
+        40
+      ],
+      "id": "abfcbbdc-2ab4-4a4e-89f7-aba5e67d6178",
+      "name": "Normalize Incoming"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH matches AS (\n    SELECT\n        d.id AS dialog_id,\n        d.airtable_dialog_id,\n        d.airtable_task_id,\n        d.telegram_username,\n        d.telegram_user_id,\n        d.telegram_chat_id,\n        d.status AS dialog_status,\n        COUNT(*) OVER () AS matching_dialogs\n    FROM agent_v3.dialogs d\n    WHERE d.status IN (\n        'scheduled',\n        'active',\n        'waiting_user',\n        'waiting_owner'\n    )\n      AND COALESCE(d.metadata ->> 'task_status', '') = 'Active'\n      AND (\n          (\n              NULLIF('{{ $json.telegram_chat_id }}', '') IS NOT NULL\n              AND d.telegram_chat_id =\n                  NULLIF('{{ $json.telegram_chat_id }}', '')::bigint\n          )\n          OR\n          (\n              NULLIF('{{ $json.telegram_user_id }}', '') IS NOT NULL\n              AND d.telegram_user_id =\n                  NULLIF('{{ $json.telegram_user_id }}', '')::bigint\n          )\n      )\n    ORDER BY\n        COALESCE(\n            d.last_activity_at,\n            d.started_at,\n            d.created_at\n        ) DESC,\n        d.id DESC\n)\nSELECT *\nFROM matches\nLIMIT 1;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -650,
+        220
+      ],
+      "id": "c7d1c039-7e64-41fa-92dc-279ca9127b64",
+      "name": "Find Routable Active Dialog"
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst row = $json;\nconst incoming =\n  $('Normalize Incoming').first().json;\n\nif (!row.dialog_id) {\n  return [];\n}\n\nconst count =\n  Number(row.matching_dialogs ?? 0);\n\nif (count > 1) {\n  throw new Error(\n    `Найдено несколько маршрутизируемых V3-диалогов из Active-задач для одного Telegram чата. ` +\n    `Нельзя однозначно маршрутизировать сообщение. matches=${count}`\n  );\n}\n\nreturn [{\n  json: {\n    ...row,\n    ...incoming\n  }\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -530,
+        220
+      ],
+      "id": "d115f7f9-6d3b-4e77-af2a-ee9dcacd8226",
+      "name": "Validate Routing"
+    },
+    {
+      "parameters": {
+        "base": {
+          "__rl": true,
+          "value": "YOUR_AIRTABLE_BASE_ID",
+          "mode": "id",
+          "cachedResultName": "AI Assistant v2"
+        },
+        "table": {
+          "__rl": true,
+          "value": "YOUR_V2_TASK_TABLE_ID",
+          "mode": "id",
+          "cachedResultName": "agent_tasks_v3"
+        },
+        "id": "={{ $json.airtable_task_id }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        1990,
+        220
+      ],
+      "id": "45b55c3a-57bc-4e6d-bdba-82568ea5b053",
+      "name": "Get Task"
+    },
+    {
+      "parameters": {
+        "jsCode": "\nfunction sql(v) {\n  return String(v ?? '').replace(/'/g, \"''\");\n}\n\nfunction bigint(v, label) {\n  const s = String(v ?? '').trim();\n\n  if (!/^-?\\d+$/.test(s)) {\n    throw new Error(`${label} is not an integer: ${s}`);\n  }\n\n  return s;\n}\n\nfunction optionName(v) {\n  if (v && typeof v === 'object' && !Array.isArray(v)) {\n    return v.name ?? String(v);\n  }\n\n  return String(v ?? '');\n}\n\nfunction multiNames(v) {\n  if (!Array.isArray(v)) {\n    return [];\n  }\n\n  return v\n    .map(optionName)\n    .filter(Boolean);\n}\n\nfunction hhmm(v, fallback) {\n  const m = String(v || fallback).match(\n    /^(\\d{1,2}):(\\d{2})/\n  );\n\n  if (!m) {\n    throw new Error(`Invalid time: ${v}`);\n  }\n\n  return {\n    h: Number(m[1]),\n    m: Number(m[2])\n  };\n}\n\nconst task = $json;\nconst incoming = $('Validate Routing').item.json;\n\nconst zone =\n  optionName(task.timezone) ||\n  'Europe/Moscow';\n\nconst workDaysRaw =\n  multiNames(task.work_days);\n\nconst workDays =\n  workDaysRaw.length\n    ? workDaysRaw\n    : ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];\n\nconst start =\n  hhmm(task.work_start, '09:00');\n\nconst end =\n  hhmm(task.work_end, '19:00');\n\nlet delayMin =\n  Math.max(\n    0,\n    Math.floor(\n      Number(task.delay_min_sec ?? 20)\n    )\n  );\n\nlet delayMax =\n  Math.max(\n    delayMin,\n    Math.floor(\n      Number(\n        task.delay_max_sec ??\n        delayMin\n      )\n    )\n  );\n\n// Каждый новый message получает новую случайную человеческую паузу.\n// Если pending process_inbound уже есть,\n// run_at будет перенесён на новое время.\nconst delaySec =\n  delayMin +\n  Math.floor(\n    Math.random() *\n    (delayMax - delayMin + 1)\n  );\n\nconst now =\n  $now.setZone(zone);\n\nconst dayMap = {\n  Mon: 1,\n  Tue: 2,\n  Wed: 3,\n  Thu: 4,\n  Fri: 5,\n  Sat: 6,\n  Sun: 7\n};\n\nconst allowed =\n  new Set(\n    workDays\n      .map(x => dayMap[x])\n      .filter(Boolean)\n  );\n\nif (!allowed.size) {\n  [1, 2, 3, 4, 5]\n    .forEach(x => allowed.add(x));\n}\n\nlet runAt = null;\n\n// Поддерживает обычные и ночные окна.\nfor (\n  let offset = -1;\n  offset <= 8 && !runAt;\n  offset++\n) {\n  const day =\n    now\n      .startOf('day')\n      .plus({ days: offset });\n\n  if (!allowed.has(day.weekday)) {\n    continue;\n  }\n\n  let windowStart =\n    day.set({\n      hour: start.h,\n      minute: start.m,\n      second: 0,\n      millisecond: 0\n    });\n\n  let windowEnd =\n    day.set({\n      hour: end.h,\n      minute: end.m,\n      second: 0,\n      millisecond: 0\n    });\n\n  if (windowEnd <= windowStart) {\n    windowEnd =\n      windowEnd.plus({ days: 1 });\n  }\n\n  if (now >= windowEnd) {\n    continue;\n  }\n\n  const base =\n    now > windowStart\n      ? now\n      : windowStart;\n\n  const candidate =\n    base.plus({\n      seconds: delaySec\n    });\n\n  if (candidate < windowEnd) {\n    runAt = candidate;\n  }\n}\n\nif (!runAt) {\n  throw new Error(\n    'Could not calculate process_inbound run_at'\n  );\n}\n\nconst runAtIso =\n  runAt\n    .toUTC()\n    .toISO();\n\nconst dialogId =\n  bigint(\n    incoming.dialog_id,\n    'dialog_id'\n  );\n\nconst telegramMessageId =\n  bigint(\n    incoming.telegram_message_id,\n    'telegram_message_id'\n  );\n\nconst messageText =\n  sql(incoming.text);\n\nconst messageType =\n  sql(incoming.message_type);\n\nconst telegramCreatedAt =\n  sql(incoming.telegram_created_at);\n\nconst rawMessageJson =\n  sql(incoming.raw_message_json);\n\nconst airtableDialogId =\n  sql(incoming.airtable_dialog_id);\n\nconst airtableTaskId =\n  sql(incoming.airtable_task_id);\n\nconst q = `\nWITH inserted_message AS (\n\n  INSERT INTO agent_v3.messages (\n    dialog_id,\n    telegram_message_id,\n    direction,\n    sender_type,\n    message_type,\n    text,\n    telegram_created_at,\n    metadata\n  )\n\n  VALUES (\n    ${dialogId},\n    ${telegramMessageId},\n    'inbound',\n    'user',\n    '${messageType}',\n    NULLIF('${messageText}', ''),\n    '${telegramCreatedAt}'::timestamptz,\n\n    jsonb_build_object(\n      'source',\n      'telepilot',\n      'raw_message',\n      '${rawMessageJson}'::jsonb\n    )\n  )\n\n  ON CONFLICT (\n    dialog_id,\n    telegram_message_id\n  )\n  WHERE telegram_message_id IS NOT NULL\n\n  DO NOTHING\n\n  RETURNING\n    id,\n    dialog_id,\n    telegram_message_id\n),\n\ncancel_followups AS (\n\n  UPDATE agent_v3.events\n  SET\n    status = 'cancelled',\n    locked_at = NULL,\n    updated_at = NOW()\n  WHERE dialog_id = ${dialogId}\n    AND event_type = 'followup'\n    AND status = 'pending'\n  RETURNING id\n),\n\nscheduled_event AS (\n\n  INSERT INTO agent_v3.events (\n    dialog_id,\n    event_type,\n    run_at,\n    status,\n    payload\n  )\n\n  SELECT\n    im.dialog_id,\n    'process_inbound',\n    '${sql(runAtIso)}'::timestamptz,\n    'pending',\n\n    jsonb_build_object(\n      'airtable_task_id',\n      '${airtableTaskId}',\n      'airtable_dialog_id',\n      '${airtableDialogId}',\n      'last_message_id',\n      im.id,\n      'last_telegram_message_id',\n      im.telegram_message_id\n    )\n\n  FROM inserted_message im\n\n  ON CONFLICT (\n    dialog_id,\n    event_type\n  )\n  WHERE\n    status = 'pending'\n    AND event_type IN (\n      'start_dialog',\n      'process_inbound',\n      'followup'\n    )\n\n  DO UPDATE SET\n    run_at = EXCLUDED.run_at,\n    payload =\n      agent_v3.events.payload ||\n      EXCLUDED.payload,\n    updated_at = NOW()\n\n  RETURNING\n    id,\n    dialog_id,\n    run_at\n),\n\nupdated_dialog AS (\n\n  UPDATE agent_v3.dialogs d\n\n  SET\n    -- На входящем сообщении sender_id.user_id уже относится к собеседнику.\n    telegram_user_id =\n      COALESCE(\n        NULLIF('${sql(incoming.telegram_user_id)}', '')::bigint,\n        d.telegram_user_id\n      ),\n\n    telegram_chat_id =\n      COALESCE(\n        NULLIF('${sql(incoming.telegram_chat_id)}', '')::bigint,\n        d.telegram_chat_id\n      ),\n\n    status = 'active',\n    waiting_for = NULL,\n    followup_count = 0,\n\n    last_activity_at = NOW(),\n    last_inbound_at = NOW(),\n\n    next_action_at = (\n      SELECT se.run_at\n      FROM scheduled_event se\n      LIMIT 1\n    ),\n\n    updated_at = NOW()\n\n  WHERE\n    d.id = ${dialogId}\n    AND EXISTS (\n      SELECT 1\n      FROM inserted_message\n    )\n\n  RETURNING\n    d.id,\n    d.airtable_dialog_id,\n    d.airtable_task_id,\n    d.status\n)\n\nSELECT\n  ud.id AS dialog_id,\n  ud.airtable_dialog_id,\n  ud.airtable_task_id,\n  ud.status AS dialog_status,\n\n  se.id AS event_id,\n  se.run_at AS next_action_at,\n\n  im.id AS message_db_id,\n  im.telegram_message_id\n\nFROM updated_dialog ud\n\nJOIN inserted_message im\n  ON im.dialog_id = ud.id\n\nJOIN scheduled_event se\n  ON se.dialog_id = ud.id;\n`;\n\nreturn [{\n  json: {\n    sql_query: q,\n\n    dialog_id: incoming.dialog_id,\n    airtable_dialog_id:\n      incoming.airtable_dialog_id,\n    airtable_task_id:\n      incoming.airtable_task_id,\n\n    telegram_message_id:\n      incoming.telegram_message_id,\n\n    message_type:\n      incoming.message_type,\n\n    text:\n      incoming.text,\n\n    delay_sec:\n      delaySec,\n\n    next_action_at:\n      runAtIso\n  }\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        100
+      ],
+      "id": "3b5422be-4353-4166-a4d7-ed5b6f56e6d7",
+      "name": "Prepare Incoming + Debounce"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "={{ $json.sql_query }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1140,
+        100
+      ],
+      "id": "8f868641-d199-4123-8a09-921a6ddf85bb",
+      "name": "Save Incoming + Schedule"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "base": {
+          "__rl": true,
+          "value": "YOUR_AIRTABLE_BASE_ID",
+          "mode": "id",
+          "cachedResultName": "AI Assistant v2"
+        },
+        "table": {
+          "__rl": true,
+          "value": "YOUR_V2_DIALOG_TABLE_ID",
+          "mode": "id",
+          "cachedResultName": "agent_dialogs_v3"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "id": "={{ $json.airtable_dialog_id }}",
+            "last_activity_at": "={{ $now.setZone('Europe/Moscow').toISO() }}",
+            "next_action_at": "={{ $json.next_action_at }}",
+            "telegram_user_id": "={{ $('Normalize Incoming').item.json.telegram_user_id }}",
+            "telegram_chat_id": "={{ $('Normalize Incoming').item.json.telegram_chat_id }}",
+            "Status": "Active",
+            "waiting_for": "",
+            "followup_count": 0
+          },
+          "matchingColumns": [
+            "id"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": false
+            },
+            {
+              "id": "last_activity_at",
+              "displayName": "last_activity_at",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "dateTime",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "next_action_at",
+              "displayName": "next_action_at",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "dateTime",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "telegram_user_id",
+              "displayName": "telegram_user_id",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "telegram_chat_id",
+              "displayName": "telegram_chat_id",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Status",
+              "displayName": "Status",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "options",
+              "options": [
+                {
+                  "name": "New",
+                  "value": "New"
+                },
+                {
+                  "name": "Scheduled",
+                  "value": "Scheduled"
+                },
+                {
+                  "name": "Active",
+                  "value": "Active"
+                },
+                {
+                  "name": "Waiting user",
+                  "value": "Waiting user"
+                },
+                {
+                  "name": "Waiting owner",
+                  "value": "Waiting owner"
+                },
+                {
+                  "name": "Done",
+                  "value": "Done"
+                },
+                {
+                  "name": "Error",
+                  "value": "Error"
+                }
+              ],
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "waiting_for",
+              "displayName": "waiting_for",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "followup_count",
+              "displayName": "followup_count",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        1400,
+        100
+      ],
+      "id": "5c92ee43-db28-4f8a-aab3-766cd1a71c40",
+      "name": "Sync Next Action to Airtable"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- V6 OWNER REPLY ROUTING: exact reply_to first, safe single-open fallback\nWITH incoming AS (\n    SELECT\n        NULLIF(\n            '{{ $('Normalize Incoming').first().json.reply_to_message_id }}',\n            ''\n        )::bigint AS reply_to_message_id,\n\n        '{{ $('Normalize Incoming').first().json.telegram_chat_id }}'::text\n            AS admin_chat_id\n),\n\nadmin_open AS (\n    SELECT\n        r0.*,\n        COUNT(*) OVER () AS open_count\n    FROM agent_v3.owner_requests r0\n    CROSS JOIN incoming i\n    WHERE r0.status = 'open'\n      AND COALESCE(\n            r0.metadata->>'admin_chat_id',\n            ''\n          ) = i.admin_chat_id\n),\n\npicked AS (\n    SELECT a.*\n    FROM admin_open a\n    CROSS JOIN incoming i\n\n    WHERE\n        (\n            i.reply_to_message_id IS NOT NULL\n            AND a.owner_telegram_message_id =\n                i.reply_to_message_id\n        )\n\n        OR\n\n        (\n            a.open_count = 1\n            AND NOT EXISTS (\n                SELECT 1\n                FROM admin_open x\n                WHERE\n                    i.reply_to_message_id IS NOT NULL\n                    AND x.owner_telegram_message_id =\n                        i.reply_to_message_id\n            )\n        )\n\n    ORDER BY\n        CASE\n            WHEN a.owner_telegram_message_id =\n                 i.reply_to_message_id\n            THEN 0\n            ELSE 1\n        END,\n        a.id DESC\n\n    LIMIT 1\n),\n\ncounts AS (\n    SELECT COUNT(*) AS open_count\n    FROM admin_open\n)\n\nSELECT\n    CASE\n        WHEN p.id IS NULL THEN FALSE\n        ELSE TRUE\n    END AS is_owner_reply,\n\n    c.open_count AS admin_open_requests,\n\n    p.id AS owner_request_id,\n    p.airtable_owner_request_id,\n    p.airtable_task_id,\n    p.dialog_id,\n\n    p.question AS owner_question,\n    p.context AS owner_context,\n\n    COALESCE(\n        p.metadata->>'answer_scope',\n        'dialog'\n    ) AS answer_scope,\n\n    p.owner_telegram_message_id,\n\n    d.airtable_dialog_id,\n    d.telegram_chat_id AS dialog_telegram_chat_id,\n    d.telegram_user_id AS dialog_telegram_user_id,\n    d.telegram_username AS dialog_telegram_username,\n    d.status AS dialog_status\n\nFROM counts c\n\nLEFT JOIN picked p\n    ON TRUE\n\nLEFT JOIN agent_v3.dialogs d\n    ON d.id = p.dialog_id;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -1240,
+        -80
+      ],
+      "id": "0d1a2157-b31e-4d08-aee3-7a5d34f57cea",
+      "name": "Find Owner Reply v2"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "df5cef64-00a9-441c-90de-74918864ab56",
+              "leftValue": "={{ $json.is_owner_reply }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -1000,
+        -80
+      ],
+      "id": "8229f78e-dc86-4f7f-8e26-82242655d2e5",
+      "name": "Is Owner Reply?"
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{ json: $('Normalize Incoming').item.json }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -760,
+        220
+      ],
+      "id": "499b150a-0cc3-47ca-b5c3-5ae67bc190af",
+      "name": "Continue Regular Incoming"
+    },
+    {
+      "parameters": {
+        "base": {
+          "__rl": true,
+          "value": "YOUR_AIRTABLE_BASE_ID",
+          "mode": "id",
+          "cachedResultName": "AI Assistant v2"
+        },
+        "table": {
+          "__rl": true,
+          "value": "YOUR_V2_TASK_TABLE_ID",
+          "mode": "id",
+          "cachedResultName": "agent_tasks_v3"
+        },
+        "id": "={{ $json.airtable_task_id }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        -80,
+        -180
+      ],
+      "id": "f39ddf19-d93c-4a62-9443-470aa6dbe7bc",
+      "name": "Get Task — Owner Reply"
+    },
+    {
+      "parameters": {
+        "jsCode": "\nfunction sql(v) {\n  return String(v ?? '').replace(/'/g, \"''\");\n}\n\nfunction bigint(v, label) {\n  const s = String(v ?? '').trim();\n\n  if (!/^-?\\d+$/.test(s)) {\n    throw new Error(`${label} is not an integer: ${s}`);\n  }\n\n  return s;\n}\n\nfunction optionName(v) {\n  if (v && typeof v === 'object' && !Array.isArray(v)) {\n    return v.name ?? String(v);\n  }\n  return String(v ?? '');\n}\n\nfunction multiNames(v) {\n  if (!Array.isArray(v)) return [];\n  return v.map(optionName).filter(Boolean);\n}\n\nfunction hhmm(v, fallback) {\n  const m = String(v || fallback).match(/^(\\d{1,2}):(\\d{2})/);\n\n  if (!m) {\n    throw new Error(`Invalid time: ${v}`);\n  }\n\n  return {\n    h: Number(m[1]),\n    m: Number(m[2])\n  };\n}\n\nconst task = $json;\nconst request = $('Find Owner Reply v2').item.json;\nconst incoming = $('Normalize Incoming').item.json;\n\nconst answer =\n  String(incoming.text ?? '')\n    .trim();\n\nif (!answer) {\n  throw new Error(\n    'Ответ ответственного должен содержать текст'\n  );\n}\n\n\nconst answerScope =\n  request.answer_scope === 'task'\n    ? 'task'\n    : 'dialog';\n\nconst factDialogSql =\n  answerScope === 'task'\n    ? 'NULL'\n    : String(request.dialog_id);\n\nconst factText =\n  `Вопрос: ${String(request.owner_question ?? '').trim()}\\nОтвет: ${answer}`;\n\nconst zone =\n  optionName(task.timezone) ||\n  'Europe/Moscow';\n\nconst workDaysRaw =\n  multiNames(task.work_days);\n\nconst workDays =\n  workDaysRaw.length\n    ? workDaysRaw\n    : ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];\n\nconst start =\n  hhmm(task.work_start, '09:00');\n\nconst end =\n  hhmm(task.work_end, '19:00');\n\nlet delayMin =\n  Math.max(\n    0,\n    Math.floor(\n      Number(task.delay_min_sec ?? 20)\n    )\n  );\n\nlet delayMax =\n  Math.max(\n    delayMin,\n    Math.floor(\n      Number(task.delay_max_sec ?? delayMin)\n    )\n  );\n\nconst delaySec =\n  delayMin +\n  Math.floor(\n    Math.random() *\n    (delayMax - delayMin + 1)\n  );\n\nconst now =\n  $now.setZone(zone);\n\nconst dayMap = {\n  Mon: 1,\n  Tue: 2,\n  Wed: 3,\n  Thu: 4,\n  Fri: 5,\n  Sat: 6,\n  Sun: 7\n};\n\nconst allowed =\n  new Set(\n    workDays\n      .map(x => dayMap[x])\n      .filter(Boolean)\n  );\n\nif (!allowed.size) {\n  [1, 2, 3, 4, 5]\n    .forEach(x => allowed.add(x));\n}\n\nlet runAt = null;\n\nfor (\n  let offset = -1;\n  offset <= 8 && !runAt;\n  offset++\n) {\n  const day =\n    now.startOf('day')\n      .plus({ days: offset });\n\n  if (!allowed.has(day.weekday)) {\n    continue;\n  }\n\n  let ws =\n    day.set({\n      hour: start.h,\n      minute: start.m,\n      second: 0,\n      millisecond: 0\n    });\n\n  let we =\n    day.set({\n      hour: end.h,\n      minute: end.m,\n      second: 0,\n      millisecond: 0\n    });\n\n  if (we <= ws) {\n    we = we.plus({ days: 1 });\n  }\n\n  if (now >= we) {\n    continue;\n  }\n\n  const base =\n    now > ws ? now : ws;\n\n  const candidate =\n    base.plus({\n      seconds: delaySec\n    });\n\n  if (candidate < we) {\n    runAt = candidate;\n  }\n}\n\nif (!runAt) {\n  throw new Error(\n    'Could not calculate owner_answer run_at'\n  );\n}\n\nconst runAtIso =\n  runAt.toUTC().toISO();\n\nconst requestId =\n  bigint(\n    request.owner_request_id,\n    'owner_request_id'\n  );\n\nconst dialogId =\n  bigint(\n    request.dialog_id,\n    'dialog_id'\n  );\n\nconst ownerAnswerMessageId =\n  bigint(\n    incoming.telegram_message_id,\n    'owner_answer_telegram_message_id'\n  );\n\nconst adminUserId =\n  String(incoming.telegram_user_id ?? '')\n    .trim();\n\nconst adminChatId =\n  String(incoming.telegram_chat_id ?? '')\n    .trim();\n\nconst q = `\nWITH answer_request AS (\n\n  UPDATE agent_v3.owner_requests\n  SET\n    status = 'answered',\n    answer = '${sql(answer)}',\n    owner_answer_telegram_message_id =\n      ${ownerAnswerMessageId},\n    answered_at = NOW(),\n    updated_at = NOW()\n  WHERE id = ${requestId}\n    AND status = 'open'\n  RETURNING id\n),\n\nsave_fact AS (\n\n  INSERT INTO agent_v3.facts (\n    airtable_task_id,\n    dialog_id,\n    scope,\n    category,\n    fact_text,\n    source_type,\n    is_confirmed,\n    is_active,\n    metadata\n  )\n\n  SELECT\n    '${sql(request.airtable_task_id)}',\n    ${factDialogSql},\n    '${answerScope}',\n    'owner_answer',\n    '${sql(factText)}',\n    'owner',\n    TRUE,\n    TRUE,\n    jsonb_build_object(\n      'owner_request_id',\n      ${requestId},\n      'question',\n      '${sql(request.owner_question)}',\n      'answer_scope',\n      '${answerScope}',\n      'source_dialog_id',\n      ${dialogId}\n    )\n\n  FROM answer_request\n\n  RETURNING id\n),\n\nschedule_event AS (\n\n  INSERT INTO agent_v3.events (\n    dialog_id,\n    event_type,\n    run_at,\n    status,\n    payload\n  )\n\n  SELECT\n    ${dialogId},\n    'owner_answer',\n    '${sql(runAtIso)}'::timestamptz,\n    'pending',\n    jsonb_build_object(\n      'owner_request_id',\n      ${requestId},\n      'airtable_task_id',\n      '${sql(request.airtable_task_id)}',\n      'airtable_dialog_id',\n      '${sql(request.airtable_dialog_id)}',\n      'answer_scope',\n      '${answerScope}'\n    )\n\n  FROM answer_request\n\n  RETURNING id, run_at\n),\n\nupdate_dialog AS (\n\n  UPDATE agent_v3.dialogs\n  SET\n    status = 'active',\n    waiting_for = NULL,\n    next_action_at = (\n      SELECT run_at\n      FROM schedule_event\n      LIMIT 1\n    ),\n    last_activity_at = NOW(),\n    updated_at = NOW()\n  WHERE id = ${dialogId}\n    AND EXISTS (\n      SELECT 1\n      FROM answer_request\n    )\n  RETURNING id\n)\n\nSELECT\n  ${requestId}::bigint\n    AS owner_request_id,\n\n  ${dialogId}::bigint\n    AS dialog_id,\n\n  '${sql(request.airtable_owner_request_id)}'::text\n    AS airtable_owner_request_id,\n\n  '${sql(request.airtable_task_id)}'::text\n    AS airtable_task_id,\n\n  '${sql(request.airtable_dialog_id)}'::text\n    AS airtable_dialog_id,\n\n  '${sql(answer)}'::text\n    AS answer,\n\n  '${sql(adminUserId)}'::text\n    AS admin_telegram_user_id,\n\n  '${sql(adminChatId)}'::text\n    AS admin_telegram_chat_id,\n\n  '${sql(runAtIso)}'::timestamptz\n    AS next_action_at,\n\n  '${answerScope}'::text\n    AS answer_scope;\n`;\n\nreturn [{\n  json: {\n    sql_query: q,\n\n    owner_request_id:\n      request.owner_request_id,\n\n    airtable_owner_request_id:\n      request.airtable_owner_request_id,\n\n    airtable_task_id:\n      request.airtable_task_id,\n\n    airtable_dialog_id:\n      request.airtable_dialog_id,\n\n    answer,\n\n    admin_telegram_user_id:\n      adminUserId,\n\n    admin_telegram_chat_id:\n      adminChatId,\n\n    next_action_at:\n      runAtIso,\n\n    answer_scope:\n      answerScope,\n\n    delay_sec:\n      delaySec\n  }\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        160,
+        -180
+      ],
+      "id": "c43fb0b4-27a3-4e68-9aad-52128472dc15",
+      "name": "Prepare Owner Answer"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "={{ $json.sql_query }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        420,
+        -180
+      ],
+      "id": "f1bb3fd1-3f37-4724-a5b5-e2c1a89abfe8",
+      "name": "Save Owner Answer + Event"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "base": {
+          "__rl": true,
+          "value": "YOUR_AIRTABLE_BASE_ID",
+          "mode": "id",
+          "cachedResultName": "AI Assistant v2"
+        },
+        "table": {
+          "__rl": true,
+          "value": "YOUR_V2_OWNER_REQUEST_TABLE_ID",
+          "mode": "id",
+          "cachedResultName": "agent_owner_requests_v3"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "id": "={{ $json.airtable_owner_request_id }}",
+            "Status": "Answered",
+            "answer": "={{ $json.answer }}",
+            "answered_at": "={{ $now.setZone('Europe/Moscow').toISO() }}"
+          },
+          "matchingColumns": [
+            "id"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": false
+            },
+            {
+              "id": "Status",
+              "displayName": "Status",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "options",
+              "options": [
+                {
+                  "name": "Open",
+                  "value": "Open"
+                },
+                {
+                  "name": "Answered",
+                  "value": "Answered"
+                },
+                {
+                  "name": "Cancelled",
+                  "value": "Cancelled"
+                }
+              ],
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "answer",
+              "displayName": "answer",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "answered_at",
+              "displayName": "answered_at",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "dateTime",
+              "readOnly": false,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        940,
+        -360
+      ],
+      "id": "df2ddb3a-da4c-46b7-bd2c-1082564bedbe",
+      "name": "Sync Owner Request Answer"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "base": {
+          "__rl": true,
+          "value": "YOUR_AIRTABLE_BASE_ID",
+          "mode": "id",
+          "cachedResultName": "AI Assistant v2"
+        },
+        "table": {
+          "__rl": true,
+          "value": "YOUR_V2_DIALOG_TABLE_ID",
+          "mode": "id",
+          "cachedResultName": "agent_dialogs_v3"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "id": "={{ $json.airtable_dialog_id }}",
+            "Status": "Active",
+            "waiting_for": "",
+            "next_action_at": "={{ $json.next_action_at }}"
+          },
+          "matchingColumns": [
+            "id"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": false
+            },
+            {
+              "id": "Status",
+              "displayName": "Status",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "options",
+              "options": [
+                {
+                  "name": "New",
+                  "value": "New"
+                },
+                {
+                  "name": "Scheduled",
+                  "value": "Scheduled"
+                },
+                {
+                  "name": "Active",
+                  "value": "Active"
+                },
+                {
+                  "name": "Waiting user",
+                  "value": "Waiting user"
+                },
+                {
+                  "name": "Waiting owner",
+                  "value": "Waiting owner"
+                },
+                {
+                  "name": "Done",
+                  "value": "Done"
+                },
+                {
+                  "name": "Error",
+                  "value": "Error"
+                }
+              ],
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "waiting_for",
+              "displayName": "waiting_for",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "next_action_at",
+              "displayName": "next_action_at",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "dateTime",
+              "readOnly": false,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        680,
+        -180
+      ],
+      "id": "8dc385a9-5572-4e8a-a91e-822155b012f2",
+      "name": "Sync Dialog after Owner Answer"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "base": {
+          "__rl": true,
+          "value": "YOUR_AIRTABLE_BASE_ID",
+          "mode": "id",
+          "cachedResultName": "AI Assistant v2"
+        },
+        "table": {
+          "__rl": true,
+          "value": "YOUR_V2_TASK_TABLE_ID",
+          "mode": "id",
+          "cachedResultName": "agent_tasks_v3"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "id": "={{ $json.airtable_task_id }}",
+            "admin_telegram_user_id": "={{ String($json.admin_telegram_user_id ?? '') }}",
+            "admin_telegram_chat_id": "={{ String($json.admin_telegram_chat_id ?? '') }}"
+          },
+          "matchingColumns": [
+            "id"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": false
+            },
+            {
+              "id": "admin_telegram_user_id",
+              "displayName": "admin_telegram_user_id",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "admin_telegram_chat_id",
+              "displayName": "admin_telegram_chat_id",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        680,
+        -60
+      ],
+      "id": "b02a5c6d-e89f-4c6e-829c-dc161a47d7a4",
+      "name": "Cache Admin IDs after Reply"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "b354130a-8a06-4294-b339-a729873edaef",
+              "leftValue": "={{ String($json.airtable_owner_request_id ?? '').trim() !== '' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        680,
+        -300
+      ],
+      "id": "d4509ef8-4c59-4682-9ae6-fd3397b458d5",
+      "name": "Airtable Owner Request Exists?"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "0ad4aa5d-78bd-4e54-bf7f-ea9208acf5c9",
+              "leftValue": "={{ $json.has_attachment === false || $json.safe_to_download === true }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "fae4f915-26e7-4a3e-bed3-294c295d285f",
+      "name": "Attachment Size OK?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -1500,
+        40
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const x = $json;\n\nlet message = '';\n\nif (x.file_too_large === true) {\n  message =\n    `Файл слишком большой (${x.file_size_mb} МБ). ` +\n    `Пожалуйста, пришлите файл размером не более 100 МБ.`;\n} else {\n  message =\n    'Не удалось определить размер файла до скачивания. ' +\n    'Пожалуйста, пришлите файл размером не более 100 МБ как обычный документ.';\n}\n\nreturn [{\n  json: {\n    ...x,\n    rejection_message: message\n  }\n}];"
+      },
+      "id": "4d7a8e2c-c263-4ba4-9ee0-895d2c84e851",
+      "name": "Prepare File Rejection",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1500,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "chat_id": "={{ $json.telegram_chat_id }}",
+        "messageText": "={{ $json.rejection_message }}",
+        "message_thread_id": 0
+      },
+      "id": "3f761e3a-07f3-4dda-9163-cec68e4ba7ba",
+      "name": "Send File Size Rejection",
+      "type": "@telepilotco/n8n-nodes-telepilot.telePilot",
+      "typeVersion": 1,
+      "position": [
+        -1240,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "60637ee7-dfc6-4899-9cc6-3394b1e57383",
+              "leftValue": "={{ $json.has_attachment === true }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "44677ee8-fe00-4b1b-b677-89c9fa75533f",
+      "name": "Has Airtable Attachment?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -190,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## V3 files v10.10 — stable small files + direct admin forward\n\nThis version intentionally returns to the proven v2.2 file architecture.\n\n### <= 5 MB\nUNCHANGED working route:\nTelegram\n→ TelePilot download\n→ PostgreSQL file_cache\n→ file_urls\n→ immediate File Upload v2.2\n→ Airtable Attachments\n\n### > 5 MB OR Telegram size is unknown\nThe file is NEVER downloaded by n8n.\nThe file is NEVER placed in PostgreSQL.\nThe file is NEVER Base64 encoded.\nThe file is NEVER sent to Airtable.\n\nInstead:\n1. Resolve current V3 dialog/task.\n2. Send admin a text context:\n   - task\n   - person / username\n   - telegram user_id\n   - filename\n   - size if known\n3. TelePilot `forwardMessages` forwards the ORIGINAL Telegram message directly\n   from the user's chat to the task administrator.\n4. Normal Agent Core processing continues with an internal note that the\n   large file was forwarded, so the user should not be asked to resend it.\n\nThis keeps n8n memory independent of large-file size.",
+        "height": 520,
+        "width": 860
+      },
+      "id": "227b9019-9c58-40fc-8fae-dd384651b2d2",
+      "name": "Attachment Flow Notes",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -1780,
+        520
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const routing = $input.first().json;\nconst incoming = $('Normalize Incoming').first().json;\n\nreturn [{\n  json: {\n    ...incoming,\n    ...routing,\n\n    // Force attachment fields from the original normalized Telegram message.\n    has_attachment: incoming.has_attachment ?? false,\n    attachment_kind: incoming.attachment_kind ?? '',\n    file_id: incoming.file_id ?? '',\n    file_name: incoming.file_name ?? '',\n    mime_type: incoming.mime_type ?? '',\n    file_size_bytes: incoming.file_size_bytes ?? 0,\n    file_size_mb: incoming.file_size_mb ?? 0,\n    file_size_known: incoming.file_size_known ?? false,\n    file_too_large: incoming.file_too_large ?? false,\n    safe_to_download: incoming.safe_to_download ?? false,\n    max_file_size_bytes: incoming.max_file_size_bytes ?? (100 * 1024 * 1024),\n    max_file_size_mb: 100\n  }\n}];"
+      },
+      "id": "ead80681-c7cb-4d9a-add0-6e815bb63890",
+      "name": "Restore Attachment Context",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -430,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "file",
+        "file_id": "={{ $json.file_id }}"
+      },
+      "id": "63651958-cc9e-4bc4-83d1-701117e110da",
+      "name": "Download Telegram File",
+      "type": "@telepilotco/n8n-nodes-telepilot.telePilot",
+      "typeVersion": 1,
+      "position": [
+        80,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const fs = require('fs');\nconst path = require('path');\n\nconst item = $input.first();\nconst source = $('Restore Attachment Context').first().json;\n\nconst filePath =\n  item.json.file?.local?.path ??\n  item.json.local?.path;\n\nif (!filePath) {\n  throw new Error('TelePilot не вернул file.local.path');\n}\n\nif (!fs.existsSync(filePath)) {\n  throw new Error(`Файл не найден: ${filePath}`);\n}\n\nconst buffer = fs.readFileSync(filePath);\n\nconst maxSize = 100 * 1024 * 1024;\n\nif (buffer.length > maxSize) {\n  throw new Error(\n    `Файл больше 100 МБ: ${(buffer.length / 1024 / 1024).toFixed(2)} МБ`\n  );\n}\n\nconst fileName =\n  source.file_name ||\n  path.basename(filePath) ||\n  `telegram_file_${source.telegram_message_id}`;\n\nlet contentType =\n  String(source.mime_type ?? '').trim();\n\nif (\n  !contentType ||\n  contentType === 'application/octet-stream' ||\n  contentType === 'application/binary'\n) {\n  const ext = path.extname(fileName).toLowerCase();\n\n  const mimeByExt = {\n    '.pdf': 'application/pdf',\n    '.csv': 'text/csv',\n    '.txt': 'text/plain',\n    '.json': 'application/json',\n    '.xml': 'application/xml',\n\n    '.jpg': 'image/jpeg',\n    '.jpeg': 'image/jpeg',\n    '.png': 'image/png',\n    '.webp': 'image/webp',\n    '.gif': 'image/gif',\n\n    '.doc': 'application/msword',\n    '.docx':\n      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',\n\n    '.xls': 'application/vnd.ms-excel',\n    '.xlsx':\n      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',\n\n    '.ppt': 'application/vnd.ms-powerpoint',\n    '.pptx':\n      'application/vnd.openxmlformats-officedocument.presentationml.presentation',\n\n    '.zip': 'application/zip',\n    '.rar': 'application/vnd.rar',\n    '.7z': 'application/x-7z-compressed',\n\n    '.mp3': 'audio/mpeg',\n    '.wav': 'audio/wav',\n    '.ogg': 'audio/ogg',\n    '.mp4': 'video/mp4'\n  };\n\n  contentType =\n    mimeByExt[ext] ||\n    'application/octet-stream';\n}\n\nreturn [{\n  json: {\n    ...source,\n    file_name: fileName,\n    content_type: contentType,\n    actual_file_size: buffer.length,\n    actual_file_size_mb:\n      Number((buffer.length / 1024 / 1024).toFixed(2)),\n    file_base64: buffer.toString('base64')\n  }\n}];"
+      },
+      "id": "2c8149c2-7f13-43b1-9e24-2c06a3352b6b",
+      "name": "Prepare File for PostgreSQL",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        320,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "base": {
+          "__rl": true,
+          "value": "YOUR_AIRTABLE_BASE_ID",
+          "mode": "id",
+          "cachedResultName": "AI Assistant v2"
+        },
+        "table": {
+          "__rl": true,
+          "value": "YOUR_V2_DIALOG_TABLE_ID",
+          "mode": "id",
+          "cachedResultName": "agent_dialogs_v3"
+        },
+        "id": "={{ $('Restore Attachment Context').first().json.airtable_dialog_id }}",
+        "options": {}
+      },
+      "id": "fe6328d3-29c8-4ae5-8b7f-061e66294c17",
+      "name": "Get Dialog File URLs",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        1060,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const record = $input.first().json;\nconst cached =\n  $('Cache File in PostgreSQL').first().json;\nconst source =\n  $('Restore Attachment Context').first().json;\n\nconst token =\n  String(cached.token ?? '').trim();\n\nif (!token) {\n  throw new Error('PostgreSQL cache did not return token');\n}\n\nconst fileName =\n  String(source.file_name || 'attachment.bin');\n\nconst newUrl =\n  'YOUR_N8N_PUBLIC_BASE_URL/webhook/YOUR_V2_FILE_DOWNLOAD_PATH/' +\n  token +\n  '?filename=' +\n  encodeURIComponent(fileName);\n\nconst current =\n  String(record.file_urls ?? '').trim();\n\nconst existing =\n  current\n    ? (current.match(/https?:\\/\\/[^\\s,;]+/gi) ?? [])\n        .map(x => x.trim())\n        .filter(Boolean)\n    : [];\n\nexisting.push(newUrl);\n\nconst uniqueUrls =\n  [...new Set(existing)];\n\nreturn [{\n  json: {\n    ...source,\n    airtable_dialog_id:\n      source.airtable_dialog_id,\n    file_urls:\n      uniqueUrls.join('\\n'),\n    files_sync_pending:\n      true,\n    new_postgres_file_url:\n      newUrl,\n    postgres_file_token:\n      token,\n    file_size_bytes:\n      cached.file_size_bytes,\n    files_count:\n      uniqueUrls.length\n  }\n}];"
+      },
+      "id": "598a72fc-f428-4676-8cf8-40b357ad037c",
+      "name": "Append PostgreSQL File URL",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1300,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "base": {
+          "__rl": true,
+          "value": "YOUR_AIRTABLE_BASE_ID",
+          "mode": "id",
+          "cachedResultName": "AI Assistant v2"
+        },
+        "table": {
+          "__rl": true,
+          "value": "YOUR_V2_DIALOG_TABLE_ID",
+          "mode": "id",
+          "cachedResultName": "agent_dialogs_v3"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "id": "={{ $json.airtable_dialog_id }}",
+            "file_urls": "={{ $json.file_urls }}",
+            "files_sync_pending": "={{ true }}"
+          },
+          "matchingColumns": [
+            "id"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": false
+            },
+            {
+              "id": "file_urls",
+              "displayName": "file_urls",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "files_sync_pending",
+              "displayName": "files_sync_pending",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "boolean",
+              "readOnly": false,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "d03c4a67-4d3b-4b88-992c-3a97ce4c24b1",
+      "name": "Save File URLs to Airtable",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        1540,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{ json: $('Restore Attachment Context').first().json }];"
+      },
+      "id": "82312f43-c57e-4482-a666-07e2feb79856",
+      "name": "Resume Incoming after File URL",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2010,
+        -40
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH token_row AS (\n    SELECT md5(\n        random()::text ||\n        clock_timestamp()::text ||\n        '{{ String($json.telegram_message_id ?? '') }}' ||\n        '{{ String($json.airtable_dialog_id ?? '') }}'\n    ) AS token\n),\nins AS (\n    INSERT INTO agent_v3.file_cache (\n        token,\n        dialog_id,\n        airtable_dialog_id,\n        telegram_message_id,\n        file_name,\n        mime_type,\n        file_size_bytes,\n        file_data,\n        expires_at\n    )\n    SELECT\n        token_row.token,\n        {{ Number($json.dialog_id || 0) }}::bigint,\n        '{{ String($json.airtable_dialog_id ?? '').replace(/'/g, \"''\") }}',\n        {{ Number($json.telegram_message_id || 0) }}::bigint,\n        '{{ String($json.file_name ?? 'attachment.bin').replace(/'/g, \"''\") }}',\n        '{{ String($json.content_type ?? 'application/octet-stream').replace(/'/g, \"''\") }}',\n        {{ Number($json.actual_file_size || 0) }}::bigint,\n        decode('{{ String($json.file_base64 ?? '') }}', 'base64'),\n        NOW() + INTERVAL '24 hours'\n    FROM token_row\n    RETURNING\n        token,\n        dialog_id,\n        airtable_dialog_id,\n        telegram_message_id,\n        file_name,\n        mime_type,\n        file_size_bytes\n)\nSELECT\n    *,\n    'YOUR_N8N_PUBLIC_BASE_URL/webhook/YOUR_V2_FILE_DOWNLOAD_PATH/' || token AS file_url\nFROM ins;",
+        "options": {}
+      },
+      "id": "3b6f1a8e-4f4f-45cc-ba76-cbf7a182e4dc",
+      "name": "Cache File in PostgreSQL",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        820,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "YOUR_N8N_PUBLIC_BASE_URL/webhook/v3-upload-attachments",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify({ record_id: $('Restore Attachment Context').first().json.airtable_dialog_id }) }}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "868abcc4-87aa-4d19-9a1e-ac8f1f287daa",
+      "name": "Signal File Uploader",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1760,
+        -40
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "8b802fef-67dc-448a-9fee-1505436bab8f",
+              "leftValue": "={{ $json.has_attachment === true && $json.file_size_known === true && Number($json.file_size_bytes || 0) <= (5 * 1024 * 1024) }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "a8580e56-debb-49d2-ad8d-5ac851bb225f",
+      "name": "Small Attachment <=5MB?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        780,
+        260
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "b8af0c47-84a2-4061-ab3c-c34c8989c1b9",
+              "leftValue": "={{ $json.has_attachment === true }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "69107b1a-dd3f-44d7-8e49-252cc047dc7f",
+      "name": "Has Large or Unknown Attachment?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1020,
+        360
+      ]
+    },
+    {
+      "parameters": {
+        "base": {
+          "__rl": true,
+          "value": "YOUR_AIRTABLE_BASE_ID",
+          "mode": "id",
+          "cachedResultName": "AI Assistant v2"
+        },
+        "table": {
+          "__rl": true,
+          "value": "YOUR_V2_DIALOG_TABLE_ID",
+          "mode": "id",
+          "cachedResultName": "agent_dialogs_v3"
+        },
+        "id": "={{ $('Restore Attachment Context').first().json.airtable_dialog_id }}",
+        "options": {}
+      },
+      "id": "8c8e92f3-6ee9-4084-8896-945ff4fcf73a",
+      "name": "Get Dialog — Large File",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        1260,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "base": {
+          "__rl": true,
+          "value": "YOUR_AIRTABLE_BASE_ID",
+          "mode": "id",
+          "cachedResultName": "AI Assistant v2"
+        },
+        "table": {
+          "__rl": true,
+          "value": "YOUR_V2_TASK_TABLE_ID",
+          "mode": "id",
+          "cachedResultName": "agent_tasks_v3"
+        },
+        "id": "={{ $('Restore Attachment Context').first().json.airtable_task_id }}",
+        "options": {}
+      },
+      "id": "33e40ee2-0054-4ef5-bdb3-2f952967b061",
+      "name": "Get Task — Large File",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        1500,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const task = $json;\nconst dialog = $('Get Dialog — Large File').first().json;\nconst incoming = $('Restore Attachment Context').first().json;\n\nconst adminChatId =\n  String(task.admin_telegram_chat_id ?? '').trim();\n\nif (!/^-?\\d+$/.test(adminChatId)) {\n  throw new Error(\n    `У задачи ${task.Name_task ?? incoming.airtable_task_id} ` +\n    `не заполнен admin_telegram_chat_id`\n  );\n}\n\nconst personName =\n  String(\n    dialog.person_name ??\n    incoming.telegram_username ??\n    incoming.telegram_user_id ??\n    'неизвестный пользователь'\n  ).trim();\n\nconst username =\n  String(dialog.telegram_username ?? '').trim();\n\nconst taskName =\n  String(\n    task.Name_task ??\n    incoming.airtable_task_id ??\n    'без названия'\n  ).trim();\n\nconst sizeKnown =\n  incoming.file_size_known === true &&\n  Number(incoming.file_size_bytes || 0) > 0;\n\nconst sizeText =\n  sizeKnown\n    ? `${Number(incoming.file_size_mb || 0).toFixed(2)} МБ`\n    : 'размер не определён заранее';\n\nconst fileName =\n  String(\n    incoming.file_name ||\n    incoming.text ||\n    'файл'\n  ).trim();\n\nconst userLabel =\n  username\n    ? `${personName} (${username})`\n    : personName;\n\nconst notice =\n  `V3 · крупный файл передан администратору\\n\\n` +\n  `Задача: ${taskName}\\n` +\n  `Собеседник: ${userLabel}\\n` +\n  `Telegram user_id: ${incoming.telegram_user_id || '—'}\\n` +\n  `Файл: ${fileName}\\n` +\n  `Размер: ${sizeText}\\n\\n` +\n  `Оригинальный файл будет переслан следующим сообщением.`;\n\nreturn {\n  json: {\n    ...incoming,\n    admin_chat_id: adminChatId,\n    task_name: taskName,\n    person_name: personName,\n    telegram_username: username,\n    admin_notice: notice,\n    large_file_forwarded_to_admin: true\n  }\n};"
+      },
+      "id": "fe6543fe-eadc-43b8-a93d-57b97ba457b0",
+      "name": "Prepare Large File Admin Notice",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1740,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "chat_id": "={{ $json.admin_chat_id }}",
+        "messageText": "={{ $json.admin_notice }}",
+        "message_thread_id": 0
+      },
+      "id": "2d37592a-a558-436c-ad64-cdea8cb021c5",
+      "name": "Send Large File Context to Admin",
+      "type": "@telepilotco/n8n-nodes-telepilot.telePilot",
+      "typeVersion": 1,
+      "position": [
+        1980,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "forwardMessages",
+        "chat_id": "={{ $('Prepare Large File Admin Notice').first().json.admin_chat_id }}",
+        "from_chat_id": "={{ $('Prepare Large File Admin Notice').first().json.telegram_chat_id }}",
+        "message_ids": "={{ $('Prepare Large File Admin Notice').first().json.telegram_message_id }}",
+        "message_thread_id": 0
+      },
+      "id": "f1cb6c72-db49-432c-b6ed-c3c7c19c262b",
+      "name": "Forward Original Large File to Admin",
+      "type": "@telepilotco/n8n-nodes-telepilot.telePilot",
+      "typeVersion": 1,
+      "position": [
+        2220,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const x = $('Prepare Large File Admin Notice').first().json;\n\nconst originalText =\n  String(x.text ?? '').trim();\n\nconst systemNote =\n  '[Системно: вложение больше 5 МБ (или размер заранее не определён). ' +\n  'Оригинальное Telegram-сообщение с файлом автоматически переслано ' +\n  'ответственному администратору по задаче. Не проси пользователя ' +\n  'отправлять файл повторно и не утверждай, что файл сохранён в Airtable.]';\n\nreturn {\n  json: {\n    ...x,\n    text:\n      originalText\n        ? `${originalText}\\n\\n${systemNote}`\n        : systemNote\n  }\n};"
+      },
+      "id": "e889d227-b80d-4a68-87a8-844b7ce897d8",
+      "name": "Resume Incoming after Large Forward",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2460,
+        240
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "TelePilot Trigger": {
+      "main": [
+        [
+          {
+            "node": "Normalize Incoming",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Incoming": {
+      "main": [
+        [
+          {
+            "node": "Find Owner Reply v2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Routing": {
+      "main": [
+        [
+          {
+            "node": "Restore Attachment Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Task": {
+      "main": [
+        [
+          {
+            "node": "Prepare Incoming + Debounce",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Incoming + Debounce": {
+      "main": [
+        [
+          {
+            "node": "Save Incoming + Schedule",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Incoming + Schedule": {
+      "main": [
+        [
+          {
+            "node": "Sync Next Action to Airtable",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find Owner Reply v2": {
+      "main": [
+        [
+          {
+            "node": "Is Owner Reply?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Owner Reply?": {
+      "main": [
+        [
+          {
+            "node": "Get Task — Owner Reply",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Continue Regular Incoming",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Continue Regular Incoming": {
+      "main": [
+        [
+          {
+            "node": "Find Routable Active Dialog",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Task — Owner Reply": {
+      "main": [
+        [
+          {
+            "node": "Prepare Owner Answer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Owner Answer": {
+      "main": [
+        [
+          {
+            "node": "Save Owner Answer + Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Owner Answer + Event": {
+      "main": [
+        [
+          {
+            "node": "Airtable Owner Request Exists?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Sync Dialog after Owner Answer",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Cache Admin IDs after Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Airtable Owner Request Exists?": {
+      "main": [
+        [
+          {
+            "node": "Sync Owner Request Answer",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Find Routable Active Dialog": {
+      "main": [
+        [
+          {
+            "node": "Validate Routing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Restore Attachment Context": {
+      "main": [
+        [
+          {
+            "node": "Small Attachment <=5MB?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download Telegram File": {
+      "main": [
+        [
+          {
+            "node": "Prepare File for PostgreSQL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Dialog File URLs": {
+      "main": [
+        [
+          {
+            "node": "Append PostgreSQL File URL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save File URLs to Airtable": {
+      "main": [
+        [
+          {
+            "node": "Signal File Uploader",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Resume Incoming after File URL": {
+      "main": [
+        [
+          {
+            "node": "Get Task",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare File for PostgreSQL": {
+      "main": [
+        [
+          {
+            "node": "Cache File in PostgreSQL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cache File in PostgreSQL": {
+      "main": [
+        [
+          {
+            "node": "Get Dialog File URLs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Append PostgreSQL File URL": {
+      "main": [
+        [
+          {
+            "node": "Save File URLs to Airtable",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Signal File Uploader": {
+      "main": [
+        [
+          {
+            "node": "Resume Incoming after File URL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Small Attachment <=5MB?": {
+      "main": [
+        [
+          {
+            "node": "Download Telegram File",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Has Large or Unknown Attachment?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Large or Unknown Attachment?": {
+      "main": [
+        [
+          {
+            "node": "Get Dialog — Large File",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Get Task",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Dialog — Large File": {
+      "main": [
+        [
+          {
+            "node": "Get Task — Large File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Task — Large File": {
+      "main": [
+        [
+          {
+            "node": "Prepare Large File Admin Notice",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Large File Admin Notice": {
+      "main": [
+        [
+          {
+            "node": "Send Large File Context to Admin",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Large File Context to Admin": {
+      "main": [
+        [
+          {
+            "node": "Forward Original Large File to Admin",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Forward Original Large File to Admin": {
+      "main": [
+        [
+          {
+            "node": "Resume Incoming after Large Forward",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Resume Incoming after Large Forward": {
+      "main": [
+        [
+          {
+            "node": "Get Task",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timeSavedMode": "fixed"
+  },
+  "tags": []
+}

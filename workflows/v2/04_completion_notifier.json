@@ -1,0 +1,393 @@
+{
+  "name": "AI Assistant — v2 Completion Notifier",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes"
+            }
+          ]
+        }
+      },
+      "id": "3873a79e-af71-4bd0-9875-7cfaf4045fb0",
+      "name": "Every minute",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -1160,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH claimable AS (\n    SELECT d.id\n    FROM agent_v3.dialogs d\n    WHERE d.status = 'done'\n      AND NULLIF(BTRIM(COALESCE(d.final_result, '')), '') IS NOT NULL\n      AND (\n            COALESCE(\n                (d.metadata ->> 'completion_notify_pending')::boolean,\n                FALSE\n            ) = TRUE\n            OR (\n                d.metadata ->> 'completion_notify_sent_at' IS NULL\n                AND d.finished_at >= NOW() - INTERVAL '60 minutes'\n            )\n          )\n      AND (\n            d.metadata ->> 'completion_notify_locked_at' IS NULL\n            OR (d.metadata ->> 'completion_notify_locked_at')::timestamptz\n                 < NOW() - INTERVAL '5 minutes'\n          )\n    ORDER BY d.finished_at ASC, d.id ASC\n    LIMIT 20\n    FOR UPDATE SKIP LOCKED\n),\nclaimed AS (\n    UPDATE agent_v3.dialogs d\n    SET\n        metadata =\n            COALESCE(d.metadata, '{}'::jsonb)\n            || jsonb_build_object(\n                'completion_notify_pending', TRUE,\n                'completion_notify_locked_at', NOW(),\n                'completion_notify_last_claim_at', NOW()\n            ),\n        updated_at = NOW()\n    WHERE d.id IN (SELECT id FROM claimable)\n    RETURNING\n        d.id AS dialog_id,\n        d.airtable_dialog_id,\n        d.airtable_task_id,\n        d.person_name,\n        d.telegram_username,\n        d.summary,\n        d.final_result,\n        d.finished_at,\n        COALESCE(d.metadata ->> 'completion_reason', 'other') AS completion_reason\n)\nSELECT *\nFROM claimed\nORDER BY finished_at ASC, dialog_id ASC;",
+        "options": {}
+      },
+      "id": "59ed1a1c-c9f7-4c5e-a1f8-d65d699bb009",
+      "name": "Claim Pending Completion Notices",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -920,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "base": {
+          "__rl": true,
+          "value": "YOUR_AIRTABLE_BASE_ID",
+          "mode": "id",
+          "cachedResultName": "AI Assistant v2"
+        },
+        "table": {
+          "__rl": true,
+          "value": "YOUR_V2_TASK_TABLE_ID",
+          "mode": "id",
+          "cachedResultName": "agent_tasks_v3"
+        },
+        "id": "={{ $json.airtable_task_id }}",
+        "options": {}
+      },
+      "id": "97ab53c1-9a5a-40dc-a33e-3171d829c697",
+      "name": "Get Completion Task",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        -680,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const notice = $('Claim Pending Completion Notices').item.json;\nconst task = $json;\n\nconst labels = {\n  goal_achieved: 'Цель достигнута',\n  declined: 'Собеседник отказался',\n  stop_requested: 'Собеседник попросил прекратить диалог',\n  not_relevant: 'Вопрос / задача неактуальны',\n  other: 'Другая причина'\n};\n\nconst reason = String(notice.completion_reason || 'other');\nconst reasonLabel = labels[reason] || labels.other;\n\nconst personName =\n  String(\n    notice.person_name ||\n    notice.telegram_username ||\n    'Собеседник'\n  ).trim();\n\nconst username = String(notice.telegram_username || '').trim();\n\nconst personLine =\n  username && username !== personName\n    ? `${personName} (${username})`\n    : personName;\n\nconst taskName =\n  String(task.Name_task || task.id || notice.airtable_task_id || '').trim();\n\nconst finalResult = String(notice.final_result || '').trim();\nconst summary = String(notice.summary || '').trim();\n\nlet message =\n  `Диалог завершён\\n\\n` +\n  `Задача: ${taskName}\\n` +\n  `Собеседник: ${personLine}\\n` +\n  `Причина: ${reasonLabel}\\n\\n` +\n  `Результат:\\n${finalResult}`;\n\nif (summary && summary !== finalResult) {\n  message += `\\n\\nКратко:\\n${summary}`;\n}\n\nreturn {\n  json: {\n    dialog_id: notice.dialog_id,\n    airtable_dialog_id: notice.airtable_dialog_id,\n    airtable_task_id: notice.airtable_task_id,\n    task_name: taskName,\n    admin_chat_id: String(task.admin_telegram_chat_id ?? '').trim(),\n    admin_username: String(task.admin_telegram_username ?? '').trim(),\n    admin_message: message\n  }\n};"
+      },
+      "id": "b672b4ae-5fc6-4c9c-b173-4c6df515bf7b",
+      "name": "Prepare Completion Admin Notice",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -440,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "9ec8afaa-d50b-4379-8434-98606829415d",
+              "leftValue": "={{ String($json.admin_chat_id ?? '').trim() !== '' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "7acbf25f-f492-460e-a2ca-4972b84dbff4",
+      "name": "Admin Chat Known?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -200,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "chat_id": "={{ $('Prepare Completion Admin Notice').item.json.admin_chat_id }}",
+        "messageText": "={{ $('Prepare Completion Admin Notice').item.json.admin_message }}",
+        "message_thread_id": 0
+      },
+      "id": "3730f848-bcca-4853-99c7-aadd80281e6a",
+      "name": "Send Completion Notice — Known Chat",
+      "type": "@telepilotco/n8n-nodes-telepilot.telePilot",
+      "typeVersion": 1,
+      "position": [
+        60,
+        -120
+      ],
+      "retryOnFail": true,
+      "maxTries": 3
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const d = $json;\nconst username = String(d.admin_username || '').trim();\n\nif (!username) {\n  throw new Error(\n    `Не заполнены admin_telegram_chat_id и admin_telegram_username для задачи ${d.task_name || d.airtable_task_id}. ` +\n    `Уведомление остаётся pending и будет повторено после исправления задачи.`\n  );\n}\n\nreturn { json: d };"
+      },
+      "id": "c95a15da-9159-4574-82f9-ea377e0fedbd",
+      "name": "Require Admin Username",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        40,
+        120
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "searchPublicChat",
+        "username": "={{ $('Prepare Completion Admin Notice').item.json.admin_username }}"
+      },
+      "type": "@telepilotco/n8n-nodes-telepilot.telePilot",
+      "typeVersion": 1,
+      "position": [
+        280,
+        120
+      ],
+      "id": "b2f28de5-045e-4c8e-8409-45e97595b913",
+      "name": "Resolve Admin Username",
+      "retryOnFail": true,
+      "maxTries": 3
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "base": {
+          "__rl": true,
+          "value": "YOUR_AIRTABLE_BASE_ID",
+          "mode": "id",
+          "cachedResultName": "AI Assistant v2"
+        },
+        "table": {
+          "__rl": true,
+          "value": "YOUR_V2_TASK_TABLE_ID",
+          "mode": "id",
+          "cachedResultName": "agent_tasks_v3"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "id": "={{ $('Prepare Completion Admin Notice').item.json.airtable_task_id }}",
+            "admin_telegram_chat_id": "={{ String($('Resolve Admin Username').item.json.id) }}"
+          },
+          "matchingColumns": [
+            "id"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": false
+            },
+            {
+              "id": "admin_telegram_chat_id",
+              "displayName": "admin_telegram_chat_id",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        520,
+        120
+      ],
+      "id": "c47347cd-4aef-4195-8041-bdfce77cf2f5",
+      "name": "Cache Admin Chat ID"
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "chat_id": "={{ String($('Resolve Admin Username').item.json.id) }}",
+        "messageText": "={{ $('Prepare Completion Admin Notice').item.json.admin_message }}",
+        "message_thread_id": 0
+      },
+      "id": "337aa197-4716-4f16-ac09-4d5305304817",
+      "name": "Send Completion Notice — Resolved Chat",
+      "type": "@telepilotco/n8n-nodes-telepilot.telePilot",
+      "typeVersion": 1,
+      "position": [
+        760,
+        120
+      ],
+      "retryOnFail": true,
+      "maxTries": 3
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE agent_v3.dialogs\nSET\n    metadata =\n        (\n          COALESCE(metadata, '{}'::jsonb)\n          - 'completion_notify_locked_at'\n        )\n        || jsonb_build_object(\n            'completion_notify_pending', FALSE,\n            'completion_notify_sent_at', NOW()\n        ),\n    updated_at = NOW()\nWHERE id = {{ $('Prepare Completion Admin Notice').item.json.dialog_id }}\nRETURNING\n    id AS dialog_id,\n    airtable_dialog_id,\n    metadata ->> 'completion_notify_sent_at' AS completion_notify_sent_at;",
+        "options": {}
+      },
+      "id": "42ca7333-9402-4ba9-b685-f6fe5a9e07d5",
+      "name": "Mark Completion Notice Sent",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1020,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## V3 — Completion Notifier v1.0\n\nНадёжная отдельная доставка результатов завершённых диалогов администратору.\n\nПочему отдельно:\n`complete_dialog` не должен зависеть от доступности Telegram администратора.\n\nМеханика:\n1. Event Runner v14.5 ставит в PostgreSQL:\n   `completion_notify_pending = true`.\n2. Этот workflow раз в минуту атомарно забирает pending-уведомления.\n3. Отправляет администратору:\n   - задачу;\n   - собеседника;\n   - причину завершения;\n   - final_result;\n   - summary.\n4. Только ПОСЛЕ успешной TelePilot-отправки:\n   - pending=false;\n   - completion_notify_sent_at=NOW().\n5. Если отправка упала:\n   - sent_at не ставится;\n   - через 5 минут lock протухает;\n   - workflow повторит попытку.\n\nМиграционный backfill:\n- при первом включении также подхватывает Done-диалоги за последние 60 минут без sent_at;\n- это позволит отправить уже завершённый текущий клубный диалог, который закрылся на v14.4.\n\nПосле первого часа backfill естественно перестаёт иметь значение — все новые завершения идут через pending-флаг v14.5."
+      },
+      "id": "205d523e-7257-4a7b-9436-39d93db5dd33",
+      "name": "Notes",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -1160,
+        -480
+      ]
+    }
+  ],
+  "connections": {
+    "Every minute": {
+      "main": [
+        [
+          {
+            "node": "Claim Pending Completion Notices",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claim Pending Completion Notices": {
+      "main": [
+        [
+          {
+            "node": "Get Completion Task",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Completion Task": {
+      "main": [
+        [
+          {
+            "node": "Prepare Completion Admin Notice",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Completion Admin Notice": {
+      "main": [
+        [
+          {
+            "node": "Admin Chat Known?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Admin Chat Known?": {
+      "main": [
+        [
+          {
+            "node": "Send Completion Notice — Known Chat",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Require Admin Username",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Completion Notice — Known Chat": {
+      "main": [
+        [
+          {
+            "node": "Mark Completion Notice Sent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Require Admin Username": {
+      "main": [
+        [
+          {
+            "node": "Resolve Admin Username",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Resolve Admin Username": {
+      "main": [
+        [
+          {
+            "node": "Cache Admin Chat ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cache Admin Chat ID": {
+      "main": [
+        [
+          {
+            "node": "Send Completion Notice — Resolved Chat",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Completion Notice — Resolved Chat": {
+      "main": [
+        [
+          {
+            "node": "Mark Completion Notice Sent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": []
+}

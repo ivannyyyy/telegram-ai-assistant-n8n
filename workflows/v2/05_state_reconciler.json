@@ -1,0 +1,161 @@
+{
+  "name": "AI Assistant — v2 State Reconciler",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes"
+            }
+          ]
+        }
+      },
+      "id": "bbadda38-abc4-44cd-abd0-3776152813d8",
+      "name": "Every minute",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -1100,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "search",
+        "base": {
+          "__rl": true,
+          "value": "YOUR_AIRTABLE_BASE_ID",
+          "mode": "id",
+          "cachedResultName": "AI Assistant v2"
+        },
+        "table": {
+          "__rl": true,
+          "value": "YOUR_V2_TASK_TABLE_ID",
+          "mode": "id",
+          "cachedResultName": "agent_tasks_v3"
+        },
+        "filterByFormula": "TRUE()",
+        "returnAll": true,
+        "options": {}
+      },
+      "id": "bd37ce5e-ae95-4dbe-b948-9c35972aff63",
+      "name": "Get All V3 Tasks",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        -880,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const out = [];\n\nfor (const item of $input.all()) {\n  const t = item.json || {};\n\n  let status = t.Status ?? t.status ?? '';\n  if (status && typeof status === 'object' && !Array.isArray(status)) {\n    status = status.name ?? '';\n  }\n  status = String(status || '').trim();\n\n  if (!['Active', 'Paused', 'Done'].includes(status)) {\n    continue;\n  }\n\n  const links = Array.isArray(t.agent_dialogs_v3)\n    ? t.agent_dialogs_v3\n    : [];\n\n  for (const link of links) {\n    const dialogId =\n      typeof link === 'object'\n        ? String(link.id || '').trim()\n        : String(link || '').trim();\n\n    if (!dialogId) continue;\n\n    out.push({\n      json: {\n        airtable_task_id: String(t.id || '').trim(),\n        task_name: String(t.Name_task || '').trim(),\n        task_status: status,\n        airtable_dialog_id: dialogId\n      }\n    });\n  }\n}\n\nreturn out;"
+      },
+      "id": "803478df-ee15-4151-9cc6-87b59b13fefb",
+      "name": "Expand Task Dialog States",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -640,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH target AS (\n    SELECT\n        d.id,\n        d.airtable_dialog_id,\n        d.status,\n        d.waiting_for,\n        d.next_action_at,\n        d.metadata\n    FROM agent_v3.dialogs d\n    WHERE d.airtable_dialog_id = '{{ $json.airtable_dialog_id }}'\n    LIMIT 1\n),\nsync_dialog AS (\n    UPDATE agent_v3.dialogs d\n    SET\n        metadata =\n            COALESCE(d.metadata, '{}'::jsonb)\n            || jsonb_build_object(\n                'task_status', '{{ $json.task_status }}',\n                'task_state_synced_at', NOW(),\n                'airtable_task_id', '{{ $json.airtable_task_id }}'\n            ),\n\n        status = CASE\n            WHEN '{{ $json.task_status }}' = 'Done'\n                 AND d.status IN ('new','scheduled','active','waiting_user','waiting_owner')\n                THEN 'done'\n            ELSE d.status\n        END,\n\n        waiting_for = CASE\n            WHEN '{{ $json.task_status }}' = 'Done'\n                THEN NULL\n            ELSE d.waiting_for\n        END,\n\n        next_action_at = CASE\n            WHEN '{{ $json.task_status }}' IN ('Paused','Done')\n                THEN NULL\n            ELSE d.next_action_at\n        END,\n\n        updated_at = NOW()\n\n    WHERE d.id IN (SELECT id FROM target)\n\n    RETURNING\n        d.id,\n        d.airtable_dialog_id,\n        d.status,\n        d.metadata ->> 'task_status' AS task_status\n),\ncancel_events AS (\n    UPDATE agent_v3.events e\n    SET\n        status = 'cancelled',\n        locked_at = NULL,\n        updated_at = NOW()\n    WHERE e.dialog_id IN (SELECT id FROM target)\n      AND '{{ $json.task_status }}' IN ('Paused','Done')\n      AND e.status IN ('pending','processing')\n    RETURNING e.id\n)\nSELECT\n    '{{ $json.airtable_task_id }}' AS airtable_task_id,\n    '{{ $json.task_status }}' AS airtable_task_status,\n    '{{ $json.airtable_dialog_id }}' AS airtable_dialog_id,\n    COALESCE((SELECT id FROM sync_dialog), NULL) AS postgres_dialog_id,\n    COALESCE((SELECT status FROM sync_dialog), 'not_found') AS postgres_dialog_status,\n    COALESCE((SELECT task_status FROM sync_dialog), '{{ $json.task_status }}') AS postgres_task_status,\n    (SELECT COUNT(*) FROM cancel_events) AS cancelled_events;",
+        "options": {}
+      },
+      "id": "d427f95e-26b6-4bab-990b-84b8f2321641",
+      "name": "Reconcile PostgreSQL Dialog State",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -380,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT\n    COALESCE(d.telegram_chat_id, d.telegram_user_id) AS telegram_route_id,\n    COUNT(*) AS matching_dialogs,\n    jsonb_agg(\n        jsonb_build_object(\n            'dialog_id', d.id,\n            'airtable_dialog_id', d.airtable_dialog_id,\n            'status', d.status,\n            'task_status', d.metadata ->> 'task_status'\n        )\n        ORDER BY d.id\n    ) AS dialogs\nFROM agent_v3.dialogs d\nWHERE d.status IN ('scheduled','active','waiting_user','waiting_owner')\n  AND COALESCE(d.metadata ->> 'task_status', 'Active') = 'Active'\n  AND COALESCE(d.telegram_chat_id, d.telegram_user_id) IS NOT NULL\nGROUP BY COALESCE(d.telegram_chat_id, d.telegram_user_id)\nHAVING COUNT(*) > 1\nORDER BY COUNT(*) DESC;",
+        "options": {}
+      },
+      "id": "cb3d90cd-6c23-4a07-aa60-a5c0d6d3782e",
+      "name": "Audit Remaining Duplicate Routes",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -120,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## V3 — PostgreSQL State Reconciler v1.0\n\nПостоянный универсальный защитный workflow.\n\nЧто делает каждую минуту:\n1. Читает ВСЕ задачи `agent_tasks_v3`.\n2. Берёт их `Status`: Active / Paused / Done.\n3. Для каждого связанного `agent_dialogs_v3` синхронизирует PostgreSQL `agent_v3.dialogs.metadata.task_status`.\n4. Если Task = Paused:\n   - маршрут перестаёт считаться Active;\n   - `next_action_at` очищается;\n   - pending/processing events отменяются;\n   - сам dialog status сохраняется, чтобы его можно было продолжить после возврата в Active.\n5. Если Task = Done:\n   - активный runtime-dialog переводится в `done`;\n   - `waiting_for` и `next_action_at` очищаются;\n   - pending/processing events отменяются.\n6. Если Task = Active:\n   - `metadata.task_status = Active`;\n   - текущий dialog status не переписывается.\n\nВАЖНО:\n- workflow НЕ выбирает «самый новый» диалог;\n- workflow НЕ скрывает настоящую ошибку, если в Airtable реально две Active-задачи на один Telegram chat;\n- `Validate Routing` остаётся строгим guard'ом;\n- этот workflow устраняет именно рассинхрон Airtable → PostgreSQL.\n\nПоследний узел `Audit Remaining Duplicate Routes` показывает только реальные остаточные дубли после синхронизации.\nЕсли он возвращает строки, значит проблема уже в Airtable/данных, а не в старом PostgreSQL runtime.\n"
+      },
+      "id": "3b398411-d86a-4d42-bfa0-cbc506997f78",
+      "name": "Notes",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -1100,
+        -420
+      ]
+    }
+  ],
+  "connections": {
+    "Every minute": {
+      "main": [
+        [
+          {
+            "node": "Get All V3 Tasks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get All V3 Tasks": {
+      "main": [
+        [
+          {
+            "node": "Expand Task Dialog States",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Expand Task Dialog States": {
+      "main": [
+        [
+          {
+            "node": "Reconcile PostgreSQL Dialog State",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Reconcile PostgreSQL Dialog State": {
+      "main": [
+        [
+          {
+            "node": "Audit Remaining Duplicate Routes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": []
+}

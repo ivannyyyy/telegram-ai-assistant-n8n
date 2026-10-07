@@ -1,0 +1,662 @@
+{
+  "name": "AI Assistant — v2 Dialog Tools",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes"
+            }
+          ]
+        }
+      },
+      "id": "f18b506b-a354-419a-b774-54481d452b17",
+      "name": "Every minute",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -1260,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "search",
+        "base": {
+          "__rl": true,
+          "value": "YOUR_AIRTABLE_BASE_ID",
+          "mode": "id",
+          "cachedResultName": "AI Assistant v2"
+        },
+        "table": {
+          "__rl": true,
+          "value": "YOUR_V2_DIALOG_TABLE_ID",
+          "mode": "id",
+          "cachedResultName": "agent_dialogs_v3"
+        },
+        "filterByFormula": "OR({unload_log}=1,{update_interim}=1,{update_characteristic}=1)",
+        "returnAll": true,
+        "options": {}
+      },
+      "id": "3384bb13-2844-4a78-9d0a-6a14b7226714",
+      "name": "Find Requested Dialog Tools",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        -1040,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const out = [];\n\nfor (const item of $input.all()) {\n  const r = item.json;\n\n  if (!r?.id) continue;\n\n  if (r.unload_log === true) {\n    out.push({\n      json: {\n        record_id: r.id,\n        action: 'log'\n      }\n    });\n  }\n\n  if (r.update_interim === true) {\n    out.push({\n      json: {\n        record_id: r.id,\n        action: 'interim'\n      }\n    });\n  }\n\n  if (r.update_characteristic === true) {\n    out.push({\n      json: {\n        record_id: r.id,\n        action: 'characteristic'\n      }\n    });\n  }\n}\n\nreturn out;"
+      },
+      "id": "0ef810dc-4986-4a15-847b-cb15892eaf84",
+      "name": "Expand Checked Actions",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -820,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "base": {
+          "__rl": true,
+          "value": "YOUR_AIRTABLE_BASE_ID",
+          "mode": "id",
+          "cachedResultName": "AI Assistant v2"
+        },
+        "table": {
+          "__rl": true,
+          "value": "YOUR_V2_DIALOG_TABLE_ID",
+          "mode": "id",
+          "cachedResultName": "agent_dialogs_v3"
+        },
+        "id": "={{ $('Expand Checked Actions').item.json.record_id }}",
+        "options": {}
+      },
+      "id": "feeb179e-0548-4edb-97ad-406044da301b",
+      "name": "Get V3 Dialog",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        -600,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "base": {
+          "__rl": true,
+          "value": "YOUR_AIRTABLE_BASE_ID",
+          "mode": "id",
+          "cachedResultName": "AI Assistant v2"
+        },
+        "table": {
+          "__rl": true,
+          "value": "YOUR_V2_TASK_TABLE_ID",
+          "mode": "id",
+          "cachedResultName": "agent_tasks_v3"
+        },
+        "id": "={{ Array.isArray($json.task) ? (($json.task[0] && typeof $json.task[0] === 'object') ? $json.task[0].id : $json.task[0]) : $json.task }}",
+        "options": {}
+      },
+      "id": "3c480190-b5e9-4fc4-8108-6ad945f5d5da",
+      "name": "Get V3 Task",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        -380,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH d AS (\n  SELECT id\n  FROM agent_v3.dialogs\n  WHERE airtable_dialog_id = '{{ $('Expand Checked Actions').item.json.record_id }}'\n  LIMIT 1\n)\nSELECT\n  COALESCE(\n    jsonb_agg(\n      jsonb_build_object(\n        'id', m.id,\n        'direction', m.direction,\n        'sender_type', m.sender_type,\n        'message_type', m.message_type,\n        'text', m.text,\n        'message_at', COALESCE(m.telegram_created_at, m.created_at),\n        'metadata', m.metadata\n      )\n      ORDER BY COALESCE(m.telegram_created_at, m.created_at), m.id\n    ) FILTER (WHERE m.id IS NOT NULL),\n    '[]'::jsonb\n  ) AS messages\nFROM d\nLEFT JOIN agent_v3.messages m\n  ON m.dialog_id = d.id\n  AND NULLIF(BTRIM(COALESCE(m.text, '')), '') IS NOT NULL;",
+        "options": {}
+      },
+      "id": "970dbc11-7930-43fe-b3a0-eb9c11b9a05a",
+      "name": "Load V3 Messages",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -160,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "let messages = $json.messages ?? [];\n\nif (typeof messages === 'string') {\n  try {\n    messages = JSON.parse(messages);\n  } catch {\n    messages = [];\n  }\n}\n\nif (!Array.isArray(messages) || messages.length === 0) {\n  throw new Error('В agent_v3.messages нет текстовых сообщений этого диалога');\n}\n\nconst dialog = $('Get V3 Dialog').item.json;\nconst task = $('Get V3 Task').item.json;\nconst request = $('Expand Checked Actions').item.json;\n\nconst personName = String(\n  dialog.person_name ||\n  dialog.telegram_username ||\n  'Собеседник'\n).trim();\n\nconst assistantName = String(\n  task.assistant_identity ||\n  task.assistant_role ||\n  'Ассистент'\n).split('\\n')[0].trim() || 'Ассистент';\n\nlet zone = task.timezone || 'Europe/Moscow';\nif (zone && typeof zone === 'object') {\n  zone = zone.name || 'Europe/Moscow';\n}\nzone = String(zone || 'Europe/Moscow');\n\nfunction fmt(value) {\n  if (!value) return '';\n  const d = new Date(value);\n  if (!Number.isFinite(d.getTime())) return '';\n\n  try {\n    return new Intl.DateTimeFormat('ru-RU', {\n      timeZone: zone,\n      day: '2-digit',\n      month: '2-digit',\n      year: 'numeric',\n      hour: '2-digit',\n      minute: '2-digit',\n      second: '2-digit',\n      hour12: false,\n    }).format(d);\n  } catch {\n    return d.toISOString();\n  }\n}\n\nconst parts = [];\n\nfor (const row of messages) {\n  const text = String(row?.text ?? '').trim();\n  if (!text) continue;\n\n  let speaker = assistantName;\n\n  if (String(row.direction || '').toLowerCase() === 'inbound') {\n    speaker = personName;\n  } else if (String(row.sender_type || '').toLowerCase() === 'owner') {\n    speaker = 'Администратор';\n  }\n\n  const date = fmt(row.message_at);\n  const title = date ? `[${date}] ${speaker}:` : `${speaker}:`;\n  parts.push(`${title}\\n${text}`);\n}\n\nif (!parts.length) {\n  throw new Error('Сообщения найдены, но итоговый текст диалога пуст');\n}\n\nconst dialogText = parts.join(\n  '\\n\\n----------------------------------------\\n\\n'\n);\n\nconst LOG_LIMIT = 95000;\nlet airtableLog = dialogText;\nlet logTruncated = false;\n\nif (airtableLog.length > LOG_LIMIT) {\n  logTruncated = true;\n  airtableLog =\n    '[ВНИМАНИЕ: начало очень длинного диалога не помещается в поле Airtable. ' +\n    'Ниже сохранены последние сообщения.]\\n\\n' +\n    airtableLog.slice(-(LOG_LIMIT - 180));\n}\n\nreturn {\n  json: {\n    record_id: request.record_id,\n    action: request.action,\n    dialog_name: dialog.Dialog || request.record_id,\n    person_name: personName,\n    person_role: dialog.person_role || '',\n    dialog_status:\n      (dialog.Status && typeof dialog.Status === 'object')\n        ? (dialog.Status.name || '')\n        : (dialog.Status || ''),\n    task_name: task.Name_task || '',\n    goal: task.goal || '',\n    required_result: task.required_result || '',\n    assistant_role: task.assistant_role || '',\n    communication_style: task.communication_style || '',\n    messages_count: parts.length,\n    dialog_text: dialogText,\n    airtable_log: airtableLog,\n    log_truncated: logTruncated\n  }\n};"
+      },
+      "id": "70da1117-7881-4e16-b0c9-6de92ebc1047",
+      "name": "Build V3 Transcript",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        60,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "c4d98624-3d13-4f13-91a2-34cabbd8f2f2",
+              "leftValue": "={{ $json.action }}",
+              "rightValue": "log",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "d9d84feb-f1cd-4859-901b-846c556a81ac",
+      "name": "Action = Log?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        280,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "2df30c9d-e5b7-45b7-915b-7eded227d19c",
+              "leftValue": "={{ $json.action }}",
+              "rightValue": "interim",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "a29a8ebd-fffe-48a2-9f24-c4e40839dd67",
+      "name": "Action = Interim?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        520,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "base": {
+          "__rl": true,
+          "value": "YOUR_AIRTABLE_BASE_ID",
+          "mode": "id",
+          "cachedResultName": "AI Assistant v2"
+        },
+        "table": {
+          "__rl": true,
+          "value": "YOUR_V2_DIALOG_TABLE_ID",
+          "mode": "id",
+          "cachedResultName": "agent_dialogs_v3"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "id": "={{ $json.record_id }}",
+            "Log": "={{ $json.airtable_log }}",
+            "unload_log": false
+          },
+          "matchingColumns": [
+            "id"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": false
+            },
+            {
+              "id": "Log",
+              "displayName": "Log",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "unload_log",
+              "displayName": "unload_log",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": false,
+              "display": true,
+              "type": "boolean",
+              "readOnly": false,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "e44110d4-df21-4e7a-a0e5-75e4928f7bc7",
+      "name": "Save Log + Clear Checkbox",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        520,
+        -180
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Проанализируй текущий диалог:\n{{ $('Build V3 Transcript').item.json.dialog_text }}",
+        "options": {
+          "systemMessage": "=Ты анализируешь рабочий диалог ассистента с собеседником.\n\nЗадача:\n{{ $('Build V3 Transcript').item.json.task_name }}\n\nЦель:\n{{ $('Build V3 Transcript').item.json.goal }}\n\nТребуемый результат:\n{{ $('Build V3 Transcript').item.json.required_result }}\n\nСоставь промежуточный отчёт о выполнении задачи.\n\nПравила:\n1. Раздели цель и требуемый результат на отдельные смысловые пункты.\n2. По каждому пункту используй только факты из диалога.\n3. Ничего не придумывай и не заполняй пробелы предположениями.\n4. Статус каждого пункта: Достигнут / Частично достигнут / Не достигнут.\n5. Для «Частично достигнут» укажи, что уже получено и чего не хватает.\n6. Если есть противоречия — укажи их явно.\n7. Учитывай подтверждённые уточнения, которые ассистент сообщил после ответа администратора.\n8. Не пересказывай весь ход переписки.\n9. В конце добавь блок «Что осталось получить».\n\nФормат:\nПромежуточный результат — <имя собеседника>\n\n1. <пункт>\nСтатус: <...>\nРезультат: <конкретные факты>\nНе хватает: <если применимо>\n\nЧто осталось получить:\n- ..."
+        }
+      },
+      "id": "892d0971-cace-48da-a851-d08ada3ecb45",
+      "name": "Generate Interim Result",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3,
+      "position": [
+        760,
+        20
+      ],
+      "retryOnFail": true,
+      "maxTries": 3
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "base": {
+          "__rl": true,
+          "value": "YOUR_AIRTABLE_BASE_ID",
+          "mode": "id",
+          "cachedResultName": "AI Assistant v2"
+        },
+        "table": {
+          "__rl": true,
+          "value": "YOUR_V2_DIALOG_TABLE_ID",
+          "mode": "id",
+          "cachedResultName": "agent_dialogs_v3"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "id": "={{ $('Build V3 Transcript').item.json.record_id }}",
+            "interim_result": "={{ $json.output }}",
+            "update_interim": false
+          },
+          "matchingColumns": [
+            "id"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": false
+            },
+            {
+              "id": "interim_result",
+              "displayName": "interim_result",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "update_interim",
+              "displayName": "update_interim",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": false,
+              "display": true,
+              "type": "boolean",
+              "readOnly": false,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "36137bf5-5fd9-43e6-a6b6-0d88498af0cf",
+      "name": "Save Interim + Clear Checkbox",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        1020,
+        20
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Проанализируй диалог:\n{{ $('Build V3 Transcript').item.json.dialog_text }}",
+        "options": {
+          "systemMessage": "=Составь рабочую характеристику собеседника ТОЛЬКО по наблюдаемым фактам из диалога.\n\nЭто не психологический портрет.\n\nЗапрещено:\n- приписывать диагнозы, скрытые мотивы или психологические особенности без прямых оснований;\n- делать выводы о здоровье, возрасте, этничности, религии, политике, сексуальной жизни и других чувствительных признаках;\n- выдумывать факты.\n\nДопустимо описывать только полезные для дальнейшей рабочей коммуникации наблюдения.\n\nФормат:\nХарактеристика собеседника — {{ $('Build V3 Transcript').item.json.person_name }}\n\n1. Стиль общения\n- ...\n\n2. Вовлечённость и скорость реакции\n- ...\n\n3. Как принимает решения / согласовывает вопросы\n- ...\n\n4. Предметная или техническая компетентность\n- только то, что прямо видно из диалога; если данных недостаточно — так и написать.\n\n5. Предпочтения, требования и ограничения\n- ...\n\n6. Договорённости и обещания со стороны собеседника\n- ...\n\n7. Как эффективнее продолжать рабочее общение\n- только практические рекомендации, вытекающие из диалога.\n\nЕсли для раздела недостаточно данных — напиши «Недостаточно данных». Будь конкретным и кратким."
+        }
+      },
+      "id": "865776d9-8797-4cbf-a284-95eea90e0a59",
+      "name": "Generate Person Characteristic",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3,
+      "position": [
+        760,
+        220
+      ],
+      "retryOnFail": true,
+      "maxTries": 3
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "base": {
+          "__rl": true,
+          "value": "YOUR_AIRTABLE_BASE_ID",
+          "mode": "id",
+          "cachedResultName": "AI Assistant v2"
+        },
+        "table": {
+          "__rl": true,
+          "value": "YOUR_V2_DIALOG_TABLE_ID",
+          "mode": "id",
+          "cachedResultName": "agent_dialogs_v3"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "id": "={{ $('Build V3 Transcript').item.json.record_id }}",
+            "characteristic_person": "={{ $json.output }}",
+            "update_characteristic": false
+          },
+          "matchingColumns": [
+            "id"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": false
+            },
+            {
+              "id": "characteristic_person",
+              "displayName": "characteristic_person",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "update_characteristic",
+              "displayName": "update_characteristic",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": false,
+              "display": true,
+              "type": "boolean",
+              "readOnly": false,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "d2352223-cf95-4d38-94c2-59fc246a393e",
+      "name": "Save Characteristic + Clear Checkbox",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        1020,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-5.1",
+          "mode": "list",
+          "cachedResultName": "gpt-5.1"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "id": "c03320bc-19d9-49e2-826c-0f0ee1c2aa06",
+      "name": "OpenAI Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        820,
+        460
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## V3 Dialog Tools v1.1 — checkbox polling\n\nWebhook удалён. Workflow запускается раз в минуту.\n\nПоля-команды в `agent_dialogs_v3`:\n- `unload_log` → обновить `Log`;\n- `update_interim` → обновить `interim_result`;\n- `update_characteristic` → обновить `characteristic_person`.\n\nПосле УСПЕШНОЙ обработки соответствующая галочка снимается в том же Airtable Update.\nЕсли обработка упала, галочка остаётся и следующая минутная проверка попробует снова.\n\nМожно поставить несколько галочек одновременно — каждая превращается в отдельное действие.\n\nИсточник истории: PostgreSQL `agent_v3.messages`."
+      },
+      "id": "8691744a-c77c-4eed-9a6c-7679e21f16a6",
+      "name": "Notes",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -1260,
+        -500
+      ]
+    }
+  ],
+  "connections": {
+    "Every minute": {
+      "main": [
+        [
+          {
+            "node": "Find Requested Dialog Tools",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find Requested Dialog Tools": {
+      "main": [
+        [
+          {
+            "node": "Expand Checked Actions",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Expand Checked Actions": {
+      "main": [
+        [
+          {
+            "node": "Get V3 Dialog",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get V3 Dialog": {
+      "main": [
+        [
+          {
+            "node": "Get V3 Task",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get V3 Task": {
+      "main": [
+        [
+          {
+            "node": "Load V3 Messages",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load V3 Messages": {
+      "main": [
+        [
+          {
+            "node": "Build V3 Transcript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build V3 Transcript": {
+      "main": [
+        [
+          {
+            "node": "Action = Log?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Action = Log?": {
+      "main": [
+        [
+          {
+            "node": "Save Log + Clear Checkbox",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Action = Interim?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Action = Interim?": {
+      "main": [
+        [
+          {
+            "node": "Generate Interim Result",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Generate Person Characteristic",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Interim Result": {
+      "main": [
+        [
+          {
+            "node": "Save Interim + Clear Checkbox",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Person Characteristic": {
+      "main": [
+        [
+          {
+            "node": "Save Characteristic + Clear Checkbox",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Generate Interim Result",
+            "type": "ai_languageModel",
+            "index": 0
+          },
+          {
+            "node": "Generate Person Characteristic",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": []
+}

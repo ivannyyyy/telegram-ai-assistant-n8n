@@ -1,0 +1,432 @@
+{
+  "name": "AI Assistant — v2 File Upload",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "v3-upload-attachments",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "4e88e8c8-62a4-45a6-a958-d915ec37b8ac",
+      "name": "New File Signal",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -1040,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "base": {
+          "__rl": true,
+          "value": "YOUR_AIRTABLE_BASE_ID",
+          "mode": "id",
+          "cachedResultName": "AI Assistant v2"
+        },
+        "table": {
+          "__rl": true,
+          "value": "YOUR_V2_DIALOG_TABLE_ID",
+          "mode": "id",
+          "cachedResultName": "agent_dialogs_v3"
+        },
+        "id": "={{ $json.body?.record_id ?? $json.query?.record_id ?? $json.record_id }}",
+        "options": {}
+      },
+      "id": "49904b58-a3c5-4890-8a76-d5586a599f1b",
+      "name": "Get Dialog",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        -820,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const inputItems = $input.all();\n\nif (!inputItems.length) {\n  return [];\n}\n\nconst record = inputItems[0].json;\n\nconst raw =\n  String(record.file_urls ?? '').trim();\n\nconst urls =\n  [...new Set(\n    (raw.match(/https?:\\/\\/[^\\s,;]+/gi) ?? [])\n      .map(x => x.trim())\n      .filter(Boolean)\n  )];\n\nif (!urls.length) {\n  throw new Error(\n    `Dialog ${record.id}: file_urls пуст`\n  );\n}\n\nconst existing =\n  Array.isArray(record.Attachments)\n    ? record.Attachments\n    : [];\n\nconst newUrls =\n  urls.slice(existing.length);\n\nif (!newUrls.length) {\n  return [{\n    json: {\n      record_id: record.id,\n      nothing_new: true,\n      expected_count: existing.length\n    }\n  }];\n}\n\nreturn newUrls.map((url, index) => {\n  const tokenMatch =\n    url.match(\n      /\\/v3-file\\/([a-fA-F0-9]{32})(?:\\?|$)/\n    );\n\n  if (!tokenMatch) {\n    throw new Error(\n      `Не удалось извлечь PostgreSQL token из URL: ${url}`\n    );\n  }\n\n  return {\n    json: {\n      record_id: record.id,\n      token: tokenMatch[1],\n      nothing_new: false,\n      expected_count:\n        existing.length + index + 1\n    }\n  };\n});"
+      },
+      "id": "41efb7e4-0be9-476f-aeeb-b07b251ee884",
+      "name": "Find New File",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -590,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "75831012-71e9-4f9e-9a17-93dc154d085b",
+              "leftValue": "={{ Boolean($json.nothing_new) }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "false",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "5a8315fc-6fc3-4504-bee3-59d1dbc856ac",
+      "name": "Has New File?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -360,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT\n    token,\n    file_name,\n    mime_type,\n    file_size_bytes,\n    file_data\nFROM agent_v3.file_cache\nWHERE token = '{{ String($json.token ?? '').replace(/[^a-fA-F0-9]/g, '') }}'\n  AND expires_at > NOW()\nLIMIT 1;",
+        "options": {}
+      },
+      "id": "ea2fac58-bfce-4edf-8c06-76a2a06dadd0",
+      "name": "Get File Bytes",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -110,
+        -100
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "function toBuffer(value) {\n  if (Buffer.isBuffer(value)) {\n    return value;\n  }\n\n  if (\n    value &&\n    typeof value === 'object' &&\n    value.type === 'Buffer' &&\n    Array.isArray(value.data)\n  ) {\n    return Buffer.from(value.data);\n  }\n\n  if (Array.isArray(value)) {\n    return Buffer.from(value);\n  }\n\n  if (value && typeof value === 'object') {\n    const keys = Object.keys(value);\n\n    if (\n      keys.length &&\n      keys.every(k => /^\\d+$/.test(k))\n    ) {\n      return Buffer.from(\n        keys\n          .sort((a,b) => Number(a) - Number(b))\n          .map(k => Number(value[k]))\n      );\n    }\n  }\n\n  if (typeof value === 'string') {\n    const s = value.trim();\n\n    if (s.startsWith('\\\\x')) {\n      return Buffer.from(s.slice(2), 'hex');\n    }\n\n    if (\n      s.startsWith('{') ||\n      s.startsWith('[')\n    ) {\n      try {\n        return toBuffer(JSON.parse(s));\n      } catch {}\n    }\n\n    return Buffer.from(s, 'base64');\n  }\n\n  throw new Error(\n    `Unsupported PostgreSQL BYTEA: ${typeof value}`\n  );\n}\n\nconst row = $json;\n\nif (!row.token) {\n  throw new Error(\n    'PostgreSQL file token not found or expired'\n  );\n}\n\nconst buffer =\n  toBuffer(row.file_data);\n\nconst expected =\n  Number(row.file_size_bytes || 0);\n\nif (\n  expected > 0 &&\n  buffer.length !== expected\n) {\n  throw new Error(\n    `BYTEA size mismatch: expected ${expected}, actual ${buffer.length}`\n  );\n}\n\nconst source =\n  $('Find New File').item.json;\n\nlet filename =\n  row.file_name ||\n  'attachment.bin';\n\nlet mime =\n  String(row.mime_type || '').trim();\n\nif (\n  !mime ||\n  mime === 'application/binary' ||\n  mime === 'application/octet-stream'\n) {\n  const lower =\n    filename.toLowerCase();\n\n  if (lower.endsWith('.pdf')) {\n    mime = 'application/pdf';\n  } else if (\n    lower.endsWith('.jpg') ||\n    lower.endsWith('.jpeg')\n  ) {\n    mime = 'image/jpeg';\n  } else if (lower.endsWith('.png')) {\n    mime = 'image/png';\n  } else if (lower.endsWith('.xlsx')) {\n    mime =\n      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';\n  } else if (lower.endsWith('.docx')) {\n    mime =\n      'application/vnd.openxmlformats-officedocument.wordprocessingml.document';\n  } else {\n    mime = 'application/octet-stream';\n  }\n}\n\nconst maxDirect =\n  5 * 1024 * 1024;\n\nif (buffer.length > maxDirect) {\n  throw new Error(\n    `Direct Airtable upload currently supports files <= 5 MB. ` +\n    `Actual: ${(buffer.length / 1024 / 1024).toFixed(2)} MB`\n  );\n}\n\nreturn {\n  json: {\n    ...source,\n    file_name: filename,\n    mime_type: mime,\n    file_size_bytes: buffer.length,\n    file_base64:\n      buffer.toString('base64')\n  }\n};"
+      },
+      "id": "26f03339-f638-4690-9a33-61442805ff5d",
+      "name": "Prepare Direct Upload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        140,
+        -100
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://content.airtable.com/v0/YOUR_AIRTABLE_BASE_ID/{{ $json.record_id }}/YOUR_V2_ATTACHMENTS_FIELD_ID/uploadAttachment",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "airtableTokenApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify({ contentType: $json.mime_type, filename: $json.file_name, file: $json.file_base64 }) }}",
+        "options": {}
+      },
+      "id": "11ef2b4a-09ae-473e-89bb-a93a09ee5500",
+      "name": "Upload Attachment to Airtable",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        400,
+        -100
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "DELETE FROM agent_v3.file_cache\nWHERE token = '{{ $('Prepare Direct Upload').item.json.token }}'\nRETURNING token;",
+        "options": {}
+      },
+      "id": "02f33811-4959-4ac9-b15c-ad54ad0f0f5b",
+      "name": "Delete Uploaded Cache",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        660,
+        -100
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "base": {
+          "__rl": true,
+          "value": "YOUR_AIRTABLE_BASE_ID",
+          "mode": "id",
+          "cachedResultName": "AI Assistant v2"
+        },
+        "table": {
+          "__rl": true,
+          "value": "YOUR_V2_DIALOG_TABLE_ID",
+          "mode": "id",
+          "cachedResultName": "agent_dialogs_v3"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "id": "={{ $('Prepare Direct Upload').item.json.record_id }}",
+            "files_sync_pending": "={{ false }}",
+            "files_sync_in_progress": "={{ false }}"
+          },
+          "matchingColumns": [
+            "id"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": false
+            },
+            {
+              "id": "files_sync_pending",
+              "displayName": "files_sync_pending",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "boolean",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "files_sync_in_progress",
+              "displayName": "files_sync_in_progress",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "boolean",
+              "readOnly": false,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "f23b62b4-e6e9-423b-8fdc-2af7a3aca1dc",
+      "name": "Clear File Flags",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        920,
+        -100
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "base": {
+          "__rl": true,
+          "value": "YOUR_AIRTABLE_BASE_ID",
+          "mode": "id",
+          "cachedResultName": "AI Assistant v2"
+        },
+        "table": {
+          "__rl": true,
+          "value": "YOUR_V2_DIALOG_TABLE_ID",
+          "mode": "id",
+          "cachedResultName": "agent_dialogs_v3"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "id": "={{ $json.record_id }}",
+            "files_sync_pending": "={{ false }}",
+            "files_sync_in_progress": "={{ false }}"
+          },
+          "matchingColumns": [
+            "id"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": false
+            },
+            {
+              "id": "files_sync_pending",
+              "displayName": "files_sync_pending",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "boolean",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "files_sync_in_progress",
+              "displayName": "files_sync_in_progress",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "boolean",
+              "readOnly": false,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "94afa782-90a6-4d4c-b790-9796beac2c88",
+      "name": "Nothing New — Clear Flags",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        -110,
+        130
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## V3 File Upload v2.2\n\nFixes the n8n Code node error:\n`A 'json' property isn't an object [item 0]`\n\nCause:\n`Find New File` was configured as `Run Once for Each Item`\nbut returned an array of n8n items.\n\nFix:\n`Find New File` now runs as `Run Once for All Items`.\n\nIt can safely return:\n- 0 items;\n- 1 new file;\n- several new files.\n\nThe rest of the v2.1 logic is unchanged:\nrecord_id → file_urls → PostgreSQL token → BYTEA → Airtable direct upload.",
+        "height": 360
+      },
+      "id": "322eb077-c41a-4b23-a90e-7652cf3b9d1a",
+      "name": "Notes",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -1040,
+        -430
+      ]
+    }
+  ],
+  "connections": {
+    "New File Signal": {
+      "main": [
+        [
+          {
+            "node": "Get Dialog",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Dialog": {
+      "main": [
+        [
+          {
+            "node": "Find New File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find New File": {
+      "main": [
+        [
+          {
+            "node": "Has New File?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has New File?": {
+      "main": [
+        [
+          {
+            "node": "Get File Bytes",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Nothing New — Clear Flags",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get File Bytes": {
+      "main": [
+        [
+          {
+            "node": "Prepare Direct Upload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Direct Upload": {
+      "main": [
+        [
+          {
+            "node": "Upload Attachment to Airtable",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload Attachment to Airtable": {
+      "main": [
+        [
+          {
+            "node": "Delete Uploaded Cache",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Delete Uploaded Cache": {
+      "main": [
+        [
+          {
+            "node": "Clear File Flags",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": []
+}
